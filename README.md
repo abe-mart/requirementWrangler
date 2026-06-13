@@ -1,6 +1,6 @@
 # REQ Wrangler: Space Instrument Compliance & Requirements Manager
 
-REQ Wrangler is a high-fidelity, client-side web application designed to track compliance matrices, verification gaps, and test execution backlogs for complex aerospace flight instruments.
+REQ Wrangler is a high-fidelity, client-side web application designed to track compliance matrices, verification gaps, and test execution backlogs.
 
 It is built entirely on client-side technologies, allowing it to run completely offline via the `file://` protocol directly from a local `index.html` file, with persistent database storage saved directly to the browser's `localStorage`.
 
