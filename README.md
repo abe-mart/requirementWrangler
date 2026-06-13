@@ -29,7 +29,7 @@ It is built entirely on client-side technologies, allowing it to run completely 
 - **Inline Requirement Builder**: Allows adding requirements directly from the Capability row for unlinked capabilities.
 
 ### 5. Verification Test Log & Drag Reordering
-- **Subtask Rollups**: Automated test status calculation from subtask components (e.g., Simulink, SIL, HIL verification runs).
+- **Subtask Rollups**: Automated test status calculation from subtask components.
 - **Execution Dates**: Records and displays the exact date stamps when tests transition to `Passed`.
 - **Drag-and-Drop Priority**: First column displays test execution priority. Click, drag, and drop rows to reorder tests in the queue and immediately adjust priority indices.
 
