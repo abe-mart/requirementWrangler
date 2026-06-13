@@ -1,0 +1,1013 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Requirement Wrangler is a portable utility to track requirements, tests, and capabilities across aerospace payload programs.">
+  <title>Requirement Wrangler</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Sidebar Navigation -->
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <div class="logo-container">
+          <div class="logo-graphic" aria-hidden="true">
+            <!-- Stylized Aerospace Rocket & Orbit Logo -->
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polygon points="12 3 17 19 12 16 7 19" fill="#FFFFFF"></polygon>
+              <ellipse cx="12" cy="11" rx="8" ry="3" stroke="#93C5FD" stroke-width="1.5" transform="rotate(-15 12 11)"></ellipse>
+            </svg>
+          </div>
+          <div>
+            <div class="logo-text">REQ</div>
+            <div class="logo-subtext">WRANGLER</div>
+          </div>
+        </div>
+      </div>
+
+      <nav class="sidebar-nav" aria-label="Main Navigation">
+        <button class="nav-item active" id="nav-dashboard" onclick="ReqApp.switchView('dashboard')">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="9"></rect><rect x="14" y="3" width="7" height="5"></rect><rect x="14" y="12" width="7" height="9"></rect><rect x="3" y="16" width="7" height="5"></rect></svg>
+          <span>Dashboard</span>
+        </button>
+        <button class="nav-item" id="nav-planning" onclick="ReqApp.switchView('planning')">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M12 20h9"></path>
+            <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
+          </svg>
+          <span>Planning Desk</span>
+        </button>
+        <button class="nav-item" id="nav-programs" onclick="ReqApp.switchView('programs')">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+          <span>Programs</span>
+        </button>
+        <button class="nav-item" id="nav-requirements" onclick="ReqApp.switchView('requirements')">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+          <span>Requirements</span>
+        </button>
+        <button class="nav-item" id="nav-capabilities" onclick="ReqApp.switchView('capabilities')">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>
+          <span>Capabilities</span>
+        </button>
+        <button class="nav-item" id="nav-tests" onclick="ReqApp.switchView('tests')">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="22 11.08 22 12 12 22 2 12 12 2 22 12 22 12.92"></polyline><path d="M22 4L12 14.01l-3-3"></path></svg>
+          <span>Tests</span>
+        </button>
+        <button class="nav-item" id="nav-traceability" onclick="ReqApp.switchView('traceability')">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="18" cy="5" r="3"></circle>
+            <circle cx="6" cy="12" r="3"></circle>
+            <circle cx="18" cy="19" r="3"></circle>
+            <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line>
+            <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
+          </svg>
+          <span>Traceability</span>
+        </button>
+      </nav>
+
+      <div class="sidebar-footer">
+        <button class="btn btn-secondary btn-sm" id="btn-settings-trigger" onclick="ReqApp.openModal('settings-modal')" style="width: 100%; display: inline-flex; align-items: center; justify-content: center; gap: 8px;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+          <span>Settings & Data</span>
+        </button>
+        <input type="file" id="import-file-input" style="display: none;" accept=".json" onchange="ReqApp.importData(event)">
+      </div>
+    </aside>
+
+    <!-- Main Content Panel -->
+    <main class="main-content">
+      <header class="top-header">
+        <div class="page-title-area">
+          <h1 id="page-heading">Dashboard</h1>
+        </div>
+        <div class="top-actions">
+          <button class="btn btn-secondary btn-sm" id="onboarding-tour-btn" onclick="ReqApp.startTour()" style="display:inline-flex; align-items:center; gap:6px; margin-right:8px; height: 38px;">
+            <span>💡 Guided Tour</span>
+          </button>
+          <button class="theme-toggle" id="theme-toggle-btn" onclick="ReqApp.toggleTheme()" aria-label="Toggle light and dark mode">
+            <!-- Moon Icon -->
+            <svg id="theme-icon-moon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+            <!-- Sun Icon -->
+            <svg id="theme-icon-sun" style="display: none;" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
+          </button>
+          <button class="btn btn-primary" id="header-action-btn" onclick="ReqApp.handleHeaderAction()">
+            <span>Add Program</span>
+          </button>
+        </div>
+      </header>
+
+      <!-- View Containers -->
+      <div class="view-container">
+        
+        <!-- DASHBOARD VIEW -->
+        <section id="view-dashboard" class="view-pane active">
+          <!-- KPI Statistics Cards -->
+          <div class="kpi-grid">
+            <div class="kpi-card">
+              <div class="kpi-details">
+                <h3>Total Programs</h3>
+                <div class="kpi-number" id="stat-total-programs">0</div>
+                <div class="kpi-subtitle">Active aerospace programs</div>
+              </div>
+              <div class="kpi-progress-ring">
+                <svg width="60" height="60">
+                  <circle class="ring-bg" cx="30" cy="30" r="25"></circle>
+                  <circle class="ring-fill gold" id="ring-programs" cx="30" cy="30" r="25" stroke-dasharray="157" stroke-dashoffset="0"></circle>
+                </svg>
+                <div class="ring-text" id="ring-programs-txt">3</div>
+              </div>
+            </div>
+
+            <div class="kpi-card">
+              <div class="kpi-details">
+                <h3>Requirements Passed</h3>
+                <div class="kpi-number" id="stat-passed-reqs">0/0</div>
+                <div class="kpi-subtitle">Satisfied project checkpoints</div>
+              </div>
+              <div class="kpi-progress-ring">
+                <svg width="60" height="60">
+                  <circle class="ring-bg" cx="30" cy="30" r="25"></circle>
+                  <circle class="ring-fill passed" id="ring-reqs" cx="30" cy="30" r="25" stroke-dasharray="157" stroke-dashoffset="157"></circle>
+                </svg>
+                <div class="ring-text" id="ring-reqs-txt">0%</div>
+              </div>
+            </div>
+
+            <div class="kpi-card">
+              <div class="kpi-details">
+                <h3>Capabilities Passed</h3>
+                <div class="kpi-number" id="stat-passed-caps">0/0</div>
+                <div class="kpi-subtitle">High-level capability status</div>
+              </div>
+              <div class="kpi-progress-ring">
+                <svg width="60" height="60">
+                  <circle class="ring-bg" cx="30" cy="30" r="25"></circle>
+                  <circle class="ring-fill inherited" id="ring-caps" cx="30" cy="30" r="25" stroke-dasharray="157" stroke-dashoffset="157"></circle>
+                </svg>
+                <div class="ring-text" id="ring-caps-txt">0%</div>
+              </div>
+            </div>
+
+            <div class="kpi-card">
+              <div class="kpi-details">
+                <h3>Tests Passed</h3>
+                <div class="kpi-number" id="stat-passed-tests">0/0</div>
+                <div class="kpi-subtitle">Success rate of executed tests</div>
+                <div class="kpi-subtitle" id="stat-backlog-time" style="font-weight: 600; color: var(--status-pending); margin-top: 2px;">0 days remaining</div>
+              </div>
+              <div class="kpi-progress-ring">
+                <svg width="60" height="60">
+                  <circle class="ring-bg" cx="30" cy="30" r="25"></circle>
+                  <circle class="ring-fill pending" id="ring-tests" cx="30" cy="30" r="25" stroke-dasharray="157" stroke-dashoffset="157"></circle>
+                </svg>
+                <div class="ring-text" id="ring-tests-txt">0%</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="dashboard-sections">
+            <!-- Program Compliance Summary -->
+            <div class="section-card">
+              <div class="section-card-header">
+                <h2>Program Compliance Summary</h2>
+              </div>
+              <div id="dashboard-program-compliance-list">
+                <!-- Dynamically loaded program status cards -->
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- PLANNING DESK VIEW -->
+        <section id="view-planning" class="view-pane">
+          <div class="table-controls" style="margin-bottom: 16px;">
+            <div style="display: flex; gap: 16px; align-items: center; flex-wrap: wrap;">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <label class="form-label" for="planning-program-select" style="margin-bottom: 0; white-space: nowrap;">Program Filter:</label>
+                <select class="select-filter" id="planning-program-select" onchange="ReqApp.render()" style="padding: 8px 12px; font-size: 13px;">
+                  <!-- Dynamically populated -->
+                </select>
+              </div>
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <label class="form-label" for="planning-component-filter" style="margin-bottom: 0; white-space: nowrap;">Component Filter:</label>
+                <select class="select-filter" id="planning-component-filter" onchange="ReqApp.render()" style="padding: 8px 12px; font-size: 13px;">
+                  <option value="ALL">All Components</option>
+                  <option value="SW">SW - Software</option>
+                  <option value="ME">ME - Mechanical</option>
+                  <option value="EE">EE - Electrical</option>
+                  <option value="OP">OP - Optical</option>
+                  <option value="SE">SE - Systems Eng</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <!-- Mini Metrics Panel -->
+          <div class="planning-metrics-panel" style="display: flex; gap: 16px; margin-bottom: 24px; flex-wrap: wrap;">
+            <div class="planning-metric-card" style="flex: 1; min-width: 180px; background-color: var(--bg-card); border: 1px solid var(--border-color); border-radius: 8px; padding: 16px; display: flex; flex-direction: column; gap: 4px; box-shadow: var(--shadow-sm);">
+              <span style="font-size: 11px; font-weight: 700; color: var(--text-secondary); text-transform: uppercase;">Verification Coverage</span>
+              <div id="planning-stat-coverage" style="font-size: 24px; font-weight: 800; font-family: 'Outfit', sans-serif; color: var(--text-primary);">0%</div>
+              <span id="planning-stat-coverage-sub" style="font-size: 11px; color: var(--text-secondary);">0 / 0 requirements covered</span>
+            </div>
+            <div class="planning-metric-card" style="flex: 1; min-width: 180px; background-color: var(--bg-card); border: 1px solid var(--border-color); border-radius: 8px; padding: 16px; display: flex; flex-direction: column; gap: 4px; box-shadow: var(--shadow-sm);">
+              <span style="font-size: 11px; font-weight: 700; color: var(--text-secondary); text-transform: uppercase;">Coverage Gaps (Untested)</span>
+              <div id="planning-stat-gaps" style="font-size: 24px; font-weight: 800; font-family: 'Outfit', sans-serif; color: var(--status-failed);">0</div>
+              <span style="font-size: 11px; color: var(--text-secondary);">Requirements missing tests</span>
+            </div>
+            <div class="planning-metric-card" style="flex: 1; min-width: 180px; background-color: var(--bg-card); border: 1px solid var(--border-color); border-radius: 8px; padding: 16px; display: flex; flex-direction: column; gap: 4px; box-shadow: var(--shadow-sm);">
+              <span style="font-size: 11px; font-weight: 700; color: var(--text-secondary); text-transform: uppercase;">Execution Backlog</span>
+              <div id="planning-stat-backlog" style="font-size: 24px; font-weight: 800; font-family: 'Outfit', sans-serif; color: var(--status-pending);">0</div>
+              <span id="planning-stat-backlog-sub" style="font-size: 11px; color: var(--text-secondary);">Planned tests not started/in-progress</span>
+            </div>
+            <div class="planning-metric-card" style="flex: 1; min-width: 180px; background-color: var(--bg-card); border: 1px solid var(--border-color); border-radius: 8px; padding: 16px; display: flex; flex-direction: column; gap: 4px; box-shadow: var(--shadow-sm);">
+              <span style="font-size: 11px; font-weight: 700; color: var(--text-secondary); text-transform: uppercase;">Total Time Estimate</span>
+              <div id="planning-stat-total-time" style="font-size: 24px; font-weight: 800; font-family: 'Outfit', sans-serif; color: var(--accent-color);">0d</div>
+              <span id="planning-stat-total-time-sub" style="font-size: 11px; color: var(--text-secondary);">0d completed / 0d total</span>
+            </div>
+          </div>
+
+          <!-- Dual-Column Cockpit Layout -->
+          <div class="planning-split-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; height: calc(100vh - 300px); overflow: hidden;">
+            <!-- Untested Requirements Column -->
+            <div class="backlog-column-wrapper" style="display: flex; flex-direction: column; gap: 12px; height: 100%; overflow: hidden;">
+              <div class="backlog-column-header" style="background-color: rgba(239, 68, 68, 0.03); border: 1px dashed rgba(239, 68, 68, 0.25); border-radius: 8px; padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; flex-shrink: 0;">
+                <h3 style="font-size: 13px; font-weight: 700; color: #EF4444; display: flex; align-items: center; gap: 6px; margin: 0; text-transform: uppercase; letter-spacing: 0.5px;">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+                  <span>Untested Requirements (Gaps)</span>
+                </h3>
+                <span id="planning-untested-count" class="badge badge-failed" style="font-size: 10px; padding: 2px 8px; border-radius: 12px;">0</span>
+              </div>
+              <div class="search-input-wrapper" style="flex: none; max-width: 100%;">
+                <span class="search-icon" aria-hidden="true">&#128269;</span>
+                <input type="search" class="search-input" id="search-planning-untested" placeholder="Search untested requirements..." oninput="ReqApp.render()">
+              </div>
+              <div id="planning-untested-list" style="display: flex; flex-direction: column; gap: 12px; flex-grow: 1; overflow-y: auto; padding-right: 4px; padding-bottom: 20px;">
+                <!-- Dynamically populated cards -->
+              </div>
+            </div>
+
+            <!-- Test Execution Backlog Column -->
+            <div class="backlog-column-wrapper" style="display: flex; flex-direction: column; gap: 12px; height: 100%; overflow: hidden;">
+              <div class="backlog-column-header" style="background-color: rgba(217, 119, 6, 0.03); border: 1px dashed rgba(217, 119, 6, 0.25); border-radius: 8px; padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; flex-shrink: 0;">
+                <h3 style="font-size: 13px; font-weight: 700; color: #D97706; display: flex; align-items: center; gap: 6px; margin: 0; text-transform: uppercase; letter-spacing: 0.5px;">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+                  <span>Test Backlog (Execution)</span>
+                </h3>
+                <span id="planning-pending-count" class="badge badge-pending" style="font-size: 10px; padding: 2px 8px; border-radius: 12px;">0</span>
+              </div>
+              <div class="search-input-wrapper" style="flex: none; max-width: 100%;">
+                <span class="search-icon" aria-hidden="true">&#128269;</span>
+                <input type="search" class="search-input" id="search-planning-pending" placeholder="Search test backlog..." oninput="ReqApp.render()">
+              </div>
+              <div id="planning-pending-list" style="display: flex; flex-direction: column; gap: 12px; flex-grow: 1; overflow-y: auto; padding-right: 4px; padding-bottom: 20px;">
+                <!-- Dynamically populated cards -->
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- PROGRAMS VIEW: MASTER-DETAIL -->
+        <section id="view-programs" class="view-pane">
+          <div class="program-split-container">
+            <!-- Left side list of programs -->
+            <div class="program-list-side">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <h3 style="font-size: 13px; font-weight: 700; text-transform: uppercase; color: var(--text-secondary); letter-spacing: 0.5px;">Programs</h3>
+                <button class="btn btn-primary btn-sm" onclick="ReqApp.openModal('program-modal')" style="padding: 4px 10px;">+ Add</button>
+              </div>
+              <div id="programs-sidebar-list" style="display: flex; flex-direction: column; gap: 8px;">
+                <!-- Populated dynamically -->
+              </div>
+            </div>
+
+            <!-- Right side details panel -->
+            <div class="program-detail-side" id="program-detail-panel">
+              <!-- Selected program details populated dynamically -->
+              <div style="text-align: center; margin-top: 100px; color: var(--text-secondary);">
+                <h3>No Program Selected</h3>
+                <p>Select a program from the list on the left to view compliance, details, and requirements.</p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- REQUIREMENTS VIEW -->
+        <section id="view-requirements" class="view-pane">
+          <div class="table-controls">
+            <div class="search-input-wrapper">
+              <span class="search-icon" aria-hidden="true">&#128269;</span>
+              <input type="search" class="search-input" id="search-requirements" placeholder="Search requirements..." oninput="ReqApp.render()">
+            </div>
+            <div class="filters-wrapper">
+              <select class="select-filter" id="filter-req-program" onchange="ReqApp.render()">
+                <option value="ALL">All Programs</option>
+              </select>
+              <select class="select-filter" id="filter-req-status" onchange="ReqApp.render()">
+                <option value="ALL">All Statuses</option>
+                <option value="Passed">Passed</option>
+                <option value="In Progress">In Progress</option>
+                <option value="Not Started">Not Started</option>
+              </select>
+              <!-- View Grid/List Toggle Container -->
+              <div class="view-toggle-container">
+                <button class="view-toggle-btn active" id="toggle-req-grid" onclick="ReqApp.setRequirementsViewMode('grid')" title="Grid View">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
+                </button>
+                <button class="view-toggle-btn" id="toggle-req-list" onclick="ReqApp.setRequirementsViewMode('list')" title="List View">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>
+                </button>
+              </div>
+              <button class="btn btn-secondary" onclick="ReqApp.openModal('component-codes-modal')">
+                <span>Manage Components</span>
+              </button>
+              <button class="btn btn-secondary" onclick="ReqApp.openImportRequirementsModal()">
+                <span>📂 Import from Excel</span>
+              </button>
+              <button class="btn btn-primary" onclick="ReqApp.openModal('requirement-modal')">
+                <span>+ Add Requirement</span>
+              </button>
+            </div>
+          </div>
+          <div id="requirements-view-content">
+            <!-- Populated dynamically as grid or table list -->
+          </div>
+        </section>
+
+        <!-- CAPABILITIES VIEW -->
+        <section id="view-capabilities" class="view-pane">
+          <div class="table-controls">
+            <div class="search-input-wrapper">
+              <span class="search-icon" aria-hidden="true">&#128269;</span>
+              <input type="search" class="search-input" id="search-capabilities" placeholder="Search capabilities..." oninput="ReqApp.render()">
+            </div>
+            <div class="filters-wrapper">
+              <button class="btn btn-secondary" onclick="ReqApp.openModal('import-capabilities-modal')">
+                <span>📂 Import from Excel</span>
+              </button>
+              <button class="btn btn-primary" onclick="ReqApp.openModal('capability-modal')">
+                <span>+ Add Capability</span>
+              </button>
+            </div>
+          </div>
+          <div class="table-wrapper">
+            <table class="custom-table" id="capabilities-table">
+              <thead>
+                <tr>
+                  <th scope="col" style="width: 120px;">ID</th>
+                  <th scope="col">Description</th>
+                  <th scope="col" style="width: 320px;">Linked Requirements</th>
+                  <th scope="col" style="width: 140px;">Status</th>
+                </tr>
+              </thead>
+              <tbody id="capabilities-table-body">
+                <!-- Dynamically populated -->
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- TRACEABILITY GRAPH VIEW -->
+        <section id="view-traceability" class="view-pane">
+          <div class="table-controls" style="margin-bottom: 16px;">
+            <div style="display: flex; gap: 16px; align-items: center; flex-wrap: wrap;">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <label class="form-label" for="traceability-program-select" style="margin-bottom: 0; white-space: nowrap;">Program Filter:</label>
+                <select class="select-filter" id="traceability-program-select" onchange="ReqApp.render()" style="padding: 8px 12px; font-size: 13px;">
+                  <!-- Dynamically populated -->
+                </select>
+              </div>
+              <p style="font-size:12px; color:var(--text-secondary); margin:0;">
+                💡 Hover over any node to highlight its verification trace path. Click on any card to edit its details.
+              </p>
+            </div>
+          </div>
+          
+          <div class="traceability-container" id="traceability-graph-container" style="position: relative; display: flex; gap: 48px; min-height: 500px; padding: 20px 10px; overflow-x: auto; background-color: var(--bg-card); border: 1px solid var(--border-color); border-radius: 12px; box-shadow: var(--shadow-sm);">
+            <!-- Background SVG for drawing links -->
+            <svg id="traceability-svg" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1;"></svg>
+            
+            <!-- Column 1: Capabilities -->
+            <div class="trace-column" id="trace-col-capabilities" style="flex: 1; display: flex; flex-direction: column; gap: 16px; z-index: 2; min-width: 250px;">
+              <h3 style="margin-top:0; margin-bottom:12px; text-align:center; font-family:'Outfit',sans-serif; color:var(--text-primary); border-bottom:2px solid var(--border-color); padding-bottom:8px;">Shared Capabilities</h3>
+              <div class="trace-nodes-list" id="trace-list-capabilities" style="display:flex; flex-direction:column; gap:12px;"></div>
+            </div>
+            
+            <!-- Column 2: Requirements -->
+            <div class="trace-column" id="trace-col-requirements" style="flex: 1; display: flex; flex-direction: column; gap: 16px; z-index: 2; min-width: 280px;">
+              <h3 style="margin-top:0; margin-bottom:12px; text-align:center; font-family:'Outfit',sans-serif; color:var(--text-primary); border-bottom:2px solid var(--border-color); padding-bottom:8px;">Requirements</h3>
+              <div class="trace-nodes-list" id="trace-list-requirements" style="display:flex; flex-direction:column; gap:12px;"></div>
+            </div>
+            
+            <!-- Column 3: Tests -->
+            <div class="trace-column" id="trace-col-tests" style="flex: 1; display: flex; flex-direction: column; gap: 16px; z-index: 2; min-width: 280px;">
+              <h3 style="margin-top:0; margin-bottom:12px; text-align:center; font-family:'Outfit',sans-serif; color:var(--text-primary); border-bottom:2px solid var(--border-color); padding-bottom:8px;">Verification Tests</h3>
+              <div class="trace-nodes-list" id="trace-list-tests" style="display:flex; flex-direction:column; gap:12px;"></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- TESTS VIEW -->
+        <section id="view-tests" class="view-pane">
+          <div class="table-controls">
+            <div class="search-input-wrapper">
+              <span class="search-icon" aria-hidden="true">&#128269;</span>
+              <input type="search" class="search-input" id="search-tests" placeholder="Search tests..." oninput="ReqApp.render()">
+            </div>
+            <div class="filters-wrapper">
+              <select class="select-filter" id="filter-test-program" onchange="ReqApp.render()">
+                <option value="ALL">All Programs</option>
+              </select>
+              <select class="select-filter" id="filter-test-assignee" onchange="ReqApp.render()">
+                <option value="ALL">All Assignees</option>
+                <option value="UNASSIGNED">Unassigned Only</option>
+              </select>
+              <select class="select-filter" id="filter-test-status" onchange="ReqApp.render()">
+                <option value="ALL">All Statuses</option>
+                <option value="Passed">Passed</option>
+                <option value="In Progress">In Progress</option>
+                <option value="Not Started">Not Started</option>
+              </select>
+              <button class="btn btn-secondary" onclick="ReqApp.openModal('team-modal')">
+                <span>👥 Manage Team</span>
+              </button>
+              <button class="btn btn-secondary" onclick="ReqApp.openModal('test-types-modal')">
+                <span>Manage Test Types</span>
+              </button>
+              <button class="btn btn-primary" onclick="ReqApp.openModal('test-modal')">
+                <span>+ Add Test</span>
+              </button>
+            </div>
+          </div>
+          <div class="table-wrapper">
+            <table class="custom-table" id="tests-table">
+              <thead>
+                <tr>
+                  <th scope="col" style="width: 90px; text-align: center;">Priority</th>
+                  <th scope="col">Test Name</th>
+                  <th scope="col" style="width: 130px;">Type</th>
+                  <th scope="col">Repo Code URL</th>
+                  <th scope="col">Scope Context</th>
+                  <th scope="col">Linked Requirements</th>
+                  <th scope="col" style="width: 90px; text-align: center;">Assignee</th>
+                  <th scope="col" style="width: 90px; text-align: center;">Est. (Days)</th>
+                  <th scope="col" style="width: 140px;">Status</th>
+                </tr>
+              </thead>
+              <tbody id="tests-table-body">
+                <!-- Dynamically populated -->
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+      </div>
+    </main>
+  </div>
+
+  <!-- MODALS -->
+
+  <!-- Program Modal -->
+  <div class="modal-backdrop" id="program-modal">
+    <div class="modal-content">
+      <header class="modal-header">
+        <h2 id="program-modal-title">Add Program</h2>
+        <button class="modal-close" onclick="ReqApp.closeModal('program-modal')">&times;</button>
+      </header>
+      <form id="program-form" onsubmit="ReqApp.saveProgram(event)">
+        <input type="hidden" id="program-edit-id">
+        <div class="modal-body">
+          <div class="form-group">
+            <label class="form-label" for="program-id-input">Program ID</label>
+            <input type="text" class="form-input" id="program-id-input" placeholder="e.g. PROG-SABER" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="program-name-input">Program Name</label>
+            <input type="text" class="form-input" id="program-name-input" placeholder="e.g. SABER Radiometer" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="program-desc-input">Description</label>
+            <textarea class="form-textarea" id="program-desc-input" placeholder="Detailed description of the program and objectives..."></textarea>
+          </div>
+        </div>
+        <footer class="modal-footer">
+          <button type="button" class="btn btn-secondary" onclick="ReqApp.closeModal('program-modal')">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save Program</button>
+        </footer>
+      </form>
+    </div>
+  </div>
+
+  <!-- Requirement Modal -->
+  <div class="modal-backdrop" id="requirement-modal">
+    <div class="modal-content">
+      <header class="modal-header">
+        <h2 id="requirement-modal-title">Add Requirement</h2>
+        <button class="modal-close" onclick="ReqApp.closeModal('requirement-modal')">&times;</button>
+      </header>
+      <form id="requirement-form" onsubmit="ReqApp.saveRequirement(event)">
+        <input type="hidden" id="requirement-edit-db-id">
+        <div class="modal-body">
+          <div class="form-group">
+            <label class="form-label" for="requirement-id-input">Requirement ID</label>
+            <input type="text" class="form-input" id="requirement-id-input" placeholder="e.g. REQ-SAB-04" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="requirement-component-select">Component Code</label>
+            <select class="form-select" id="requirement-component-select" required>
+              <!-- Populated dynamically -->
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="requirement-program-select">Program</label>
+            <select class="form-select" id="requirement-program-select" required>
+              <!-- Populated dynamically -->
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="requirement-capability-select">Capability Link (Optional)</label>
+            <select class="form-select" id="requirement-capability-select">
+              <option value="">None (Standalone)</option>
+              <!-- Populated dynamically -->
+            </select>
+          </div>
+          <div class="form-group checkbox-group" id="requirement-inherit-container">
+            <input type="checkbox" class="form-checkbox" id="requirement-inherit-checkbox">
+            <label class="form-label" for="requirement-inherit-checkbox" style="margin-bottom: 0; cursor: pointer;">
+              Inherit Pass status from linked Capability (Optional)
+            </label>
+            <div class="tooltip" aria-label="Explanation of inheritance">
+              <span style="font-size: 14px; color: var(--text-secondary); cursor: help;">&#9432;</span>
+              <span class="tooltiptext">If checked, the requirement will automatically pass if the linked capability is passed by ANY program requirement.</span>
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="requirement-desc-input">Requirement Description</label>
+            <textarea class="form-textarea" id="requirement-desc-input" placeholder="Requirement statement..." required></textarea>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="requirement-notes-input">Notes (Optional)</label>
+            <textarea class="form-textarea" id="requirement-notes-input" placeholder="Add engineering notes, links, or context..."></textarea>
+          </div>
+        </div>
+        <footer class="modal-footer">
+          <button type="button" class="btn btn-danger" id="requirement-delete-btn" style="margin-right: auto; display: none;">Delete</button>
+          <button type="button" class="btn btn-secondary" onclick="ReqApp.closeModal('requirement-modal')">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save Requirement</button>
+        </footer>
+      </form>
+    </div>
+  </div>
+
+  <!-- Capability Modal -->
+  <div class="modal-backdrop" id="capability-modal">
+    <div class="modal-content">
+      <header class="modal-header">
+        <h2 id="capability-modal-title">Add Capability</h2>
+        <button class="modal-close" onclick="ReqApp.closeModal('capability-modal')">&times;</button>
+      </header>
+      <form id="capability-form" onsubmit="ReqApp.saveCapability(event)">
+        <input type="hidden" id="capability-edit-id">
+        <div class="modal-body">
+          <div class="form-group">
+            <label class="form-label" for="capability-id-input">Capability ID</label>
+            <input type="text" class="form-input" id="capability-id-input" placeholder="e.g. CAP-NAV" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="capability-desc-input">Description</label>
+            <textarea class="form-textarea" id="capability-desc-input" placeholder="Objectives shared across programs..." required></textarea>
+          </div>
+        </div>
+        <footer class="modal-footer">
+          <button type="button" class="btn btn-danger" id="capability-delete-btn" style="margin-right: auto; display: none;">Delete</button>
+          <button type="button" class="btn btn-secondary" onclick="ReqApp.closeModal('capability-modal')">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save Capability</button>
+        </footer>
+      </form>
+    </div>
+  </div>
+
+  <!-- Test Modal -->
+  <div class="modal-backdrop" id="test-modal">
+    <div class="modal-content">
+      <header class="modal-header">
+        <h2 id="test-modal-title">Add Test</h2>
+        <button class="modal-close" onclick="ReqApp.closeModal('test-modal')">&times;</button>
+      </header>
+      <form id="test-form" onsubmit="ReqApp.saveTest(event)">
+        <input type="hidden" id="test-edit-id">
+        
+        <!-- Tab Bar Navigation -->
+        <div class="modal-tabs">
+          <button type="button" class="modal-tab-btn active" id="tab-btn-setup" onclick="ReqApp.switchModalTab('setup')">
+            Basic & Status
+          </button>
+          <button type="button" class="modal-tab-btn" id="tab-btn-execution" onclick="ReqApp.switchModalTab('execution')">
+            Execution & Context
+          </button>
+          <button type="button" class="modal-tab-btn" id="tab-btn-coverage" onclick="ReqApp.switchModalTab('coverage')">
+            Requirements
+          </button>
+        </div>
+
+        <div class="modal-body" style="padding: 20px 24px;">
+          <!-- Tab 1: Setup & Status -->
+          <div id="tab-content-setup" class="modal-tab-pane">
+            <div class="form-group">
+              <label class="form-label" for="test-name-input">Test Name</label>
+              <input type="text" class="form-input" id="test-name-input" placeholder="e.g. Thermal Cycle Test Suite" required>
+            </div>
+            
+            <div style="display: flex; gap: 16px;">
+              <div class="form-group" style="flex: 1;">
+                <label class="form-label" for="test-type-select">Test Type</label>
+                <select class="form-select" id="test-type-select" required>
+                  <!-- Dynamically populated from state.testTypes -->
+                </select>
+              </div>
+              <div class="form-group" style="flex: 1;">
+                <label class="form-label" for="test-program-select">Linked Program</label>
+                <select class="form-select" id="test-program-select" onchange="ReqApp.populateTestRequirements()" required>
+                  <!-- Populated dynamically -->
+                </select>
+              </div>
+            </div>
+
+            <div style="display: flex; gap: 16px;">
+              <div class="form-group" style="flex: 1;" id="test-status-group">
+                <label class="form-label" for="test-status-select">Outcome Status</label>
+                <select class="form-select" id="test-status-select" onchange="ReqApp.updateModalPassedDateDisplay()" required>
+                  <option value="Not Started">Not Started</option>
+                  <option value="In Progress">In Progress</option>
+                  <option value="Passed">Passed</option>
+                </select>
+                <div id="test-status-rollup-info" style="display:none; font-size:11px; color:var(--text-secondary); margin-top:4px; font-style:italic;">
+                  💡 Status is automatically rolled up from subtasks.
+                </div>
+                <div id="test-passed-date-container" style="display:none; font-size:11px; color:var(--text-secondary); margin-top:4px; font-style:italic;">
+                  📅 Passed on: <span id="test-passed-date-span">N/A</span>
+                </div>
+              </div>
+              <div class="form-group" style="flex: 1;">
+                <label class="form-label" for="test-estimate-input">Time Estimate (Days)</label>
+                <input type="number" class="form-input" id="test-estimate-input" min="0" step="0.1" placeholder="e.g. 1.5" required>
+              </div>
+            </div>
+
+            <div id="test-subtasks-container" style="display:none; border:1px dashed var(--border-color); border-radius:8px; padding:12px; margin-top:8px; background-color:var(--bg-canvas);">
+              <h4 style="font-family:'Outfit',sans-serif; margin-top:0; margin-bottom:8px; font-size:11px; color:var(--text-secondary); text-transform:uppercase; letter-spacing:0.5px;">Subtask Breakdown</h4>
+              <div id="test-subtasks-list" style="display:flex; flex-direction:column; gap:10px;">
+                <!-- Populated dynamically based on test type -->
+              </div>
+            </div>
+          </div>
+
+          <!-- Tab 2: Execution & Context -->
+          <div id="tab-content-execution" class="modal-tab-pane" style="display: none;">
+            <div style="display: flex; gap: 16px;">
+              <div class="form-group" style="flex: 1;">
+                <label class="form-label" for="test-assignee-select">Assignee</label>
+                <select class="form-select" id="test-assignee-select">
+                  <option value="">Unassigned</option>
+                  <!-- Dynamically populated -->
+                </select>
+              </div>
+              <div class="form-group" style="flex: 1;">
+                <label class="form-label" for="test-location-input">Location (Repo URL or Path)</label>
+                <input type="text" class="form-input" id="test-location-input" placeholder="e.g. https://github.com/org/repo/blob/main/test.py" required>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="test-program-desc-input">Program Context / Scope</label>
+              <input type="text" class="form-input" id="test-program-desc-input" placeholder="e.g. Full payload telemetry integration phase" required>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="test-notes-input">Notes (Optional)</label>
+              <textarea class="form-textarea" id="test-notes-input" placeholder="Add test execution logs, notes, or details..." style="height: 100px; resize: vertical;"></textarea>
+            </div>
+          </div>
+
+          <!-- Tab 3: Requirements Coverage -->
+          <div id="tab-content-coverage" class="modal-tab-pane" style="display: none;">
+            <div class="form-group" style="margin-bottom: 0;">
+              <label class="form-label">Passes off Requirements</label>
+              <div id="test-requirements-checkbox-list" style="max-height: 250px; overflow-y: auto; border:1px solid var(--border-color); border-radius:8px; padding:12px; background-color: var(--input-bg); display:flex; flex-direction:column; gap:6px;">
+                <!-- Populated dynamically -->
+              </div>
+            </div>
+          </div>
+        </div>
+        <footer class="modal-footer">
+          <button type="button" class="btn btn-danger" id="test-delete-btn" style="margin-right: auto; display: none;">Delete</button>
+          <button type="button" class="btn btn-secondary" onclick="ReqApp.closeModal('test-modal')">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save Test</button>
+        </footer>
+      </form>
+    </div>
+  </div>
+
+  <!-- Test Types Management Modal -->
+  <div class="modal-backdrop" id="test-types-modal">
+    <div class="modal-content">
+      <header class="modal-header">
+        <h2>Manage Test Types</h2>
+        <button class="modal-close" onclick="ReqApp.closeModal('test-types-modal')">&times;</button>
+      </header>
+      <div class="modal-body">
+        <label class="form-label">Active Test Types</label>
+        <div class="test-type-tag-list" id="modal-test-types-list">
+          <!-- Populated dynamically via JS -->
+        </div>
+        
+        <form id="add-test-type-form" onsubmit="ReqApp.addTestType(event)">
+          <div class="form-group" style="display:flex; gap:10px; align-items:flex-end; margin-bottom:0;">
+            <div style="flex-grow:1;">
+              <label class="form-label" for="new-test-type-input">Add Custom Test Type</label>
+              <input type="text" class="form-input" id="new-test-type-input" placeholder="e.g. Hardware-in-the-loop" required>
+            </div>
+            <button type="submit" class="btn btn-primary" style="padding: 10px 16px;">Add</button>
+          </div>
+        </form>
+      </div>
+      <footer class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="ReqApp.closeModal('test-types-modal')">Close</button>
+      </footer>
+    </div>
+  </div>
+
+  <!-- Component Codes Management Modal -->
+  <div class="modal-backdrop" id="component-codes-modal">
+    <div class="modal-content">
+      <header class="modal-header">
+        <h2>Manage Component Codes</h2>
+        <button class="modal-close" onclick="ReqApp.closeModal('component-codes-modal')">&times;</button>
+      </header>
+      <div class="modal-body">
+        <label class="form-label">Active Component Codes</label>
+        <div class="test-type-tag-list" id="modal-component-codes-list">
+          <!-- Populated dynamically via JS -->
+        </div>
+        
+        <form id="add-component-code-form" onsubmit="ReqApp.addComponentCode(event)">
+          <div class="form-group" style="display:flex; gap:10px; align-items:flex-end; margin-bottom:0;">
+            <div style="flex-grow:1;">
+              <label class="form-label" for="new-component-code-input">Add Custom Component (2-letter)</label>
+              <input type="text" class="form-input" id="new-component-code-input" placeholder="e.g. RF" maxlength="2" style="text-transform: uppercase;" required>
+            </div>
+            <button type="submit" class="btn btn-primary" style="padding: 10px 16px;">Add</button>
+          </div>
+        </form>
+      </div>
+      <footer class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="ReqApp.closeModal('component-codes-modal')">Close</button>
+      </footer>
+    </div>
+  </div>
+
+  <!-- Team Management Modal -->
+  <div class="modal-backdrop" id="team-modal">
+    <div class="modal-content">
+      <header class="modal-header">
+        <h2>Manage Team Members</h2>
+        <button class="modal-close" onclick="ReqApp.closeModal('team-modal')">&times;</button>
+      </header>
+      <div class="modal-body">
+        <label class="form-label">Active Team Members</label>
+        <div class="test-type-tag-list" id="modal-team-list" style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:20px;">
+          <!-- Populated dynamically via JS -->
+        </div>
+        
+        <form id="add-team-member-form" onsubmit="ReqApp.addTeamMember(event)">
+          <div class="form-group" style="display:flex; gap:10px; align-items:flex-end; margin-bottom:0;">
+            <div style="flex-grow:1;">
+              <label class="form-label" for="new-team-member-name">Member Name</label>
+              <input type="text" class="form-input" id="new-team-member-name" placeholder="e.g. Margaret Hamilton" required>
+            </div>
+            <div style="width:80px; flex-shrink:0;">
+              <label class="form-label" for="new-team-member-color">Avatar Color</label>
+              <input type="color" class="form-input" id="new-team-member-color" value="#4F46E5" style="height:38px; padding:2px; cursor:pointer;" required>
+            </div>
+            <button type="submit" class="btn btn-primary" style="padding: 10px 16px;">Add</button>
+          </div>
+        </form>
+      </div>
+      <footer class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="ReqApp.closeModal('team-modal')">Close</button>
+      </footer>
+    </div>
+  </div>
+
+  <!-- Link Test Modal -->
+  <div class="modal-backdrop" id="link-test-modal">
+    <div class="modal-content">
+      <header class="modal-header">
+        <h2>Link Test to Requirement</h2>
+        <button class="modal-close" onclick="ReqApp.closeModal('link-test-modal')">&times;</button>
+      </header>
+      <form id="link-test-form" onsubmit="ReqApp.saveLinkTest(event)">
+        <input type="hidden" id="link-test-req-id">
+        <div class="modal-body">
+          <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 16px;">
+            Select a verification test from the same program to link to requirement <strong id="link-test-req-display" style="font-family:'Outfit',sans-serif; color:var(--text-primary);"></strong>.
+          </p>
+          <div class="form-group">
+            <label class="form-label" for="link-test-select">Select Test</label>
+            <select class="form-select" id="link-test-select" required>
+              <!-- Populated dynamically -->
+            </select>
+          </div>
+        </div>
+        <footer class="modal-footer">
+          <button type="button" class="btn btn-secondary" onclick="ReqApp.closeModal('link-test-modal')">Cancel</button>
+          <button type="submit" class="btn btn-primary">Link Test</button>
+        </footer>
+      </form>
+    </div>
+  </div>
+ 
+  <!-- Import Capabilities Modal -->
+  <div class="modal-backdrop" id="import-capabilities-modal">
+    <div class="modal-content">
+      <header class="modal-header">
+        <h2>Import Capabilities from Excel</h2>
+        <button class="modal-close" onclick="ReqApp.closeModal('import-capabilities-modal')">&times;</button>
+      </header>
+      <div class="modal-body">
+        <div class="form-group">
+          <label class="form-label" for="import-cap-file-input">Select Excel / CSV File</label>
+          <input type="file" class="form-input" id="import-cap-file-input" accept=".xlsx, .xls, .csv" onchange="ReqApp.handleExcelUpload(event, 'capabilities')" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="import-capabilities-sheet-select">Select Sheet</label>
+          <select class="form-select" id="import-capabilities-sheet-select" onchange="ReqApp.handleSheetChange('capabilities')">
+            <option value="">-- Upload a file first --</option>
+          </select>
+        </div>
+        <div style="display: flex; gap: 16px;">
+          <div class="form-group" style="flex: 1;">
+            <label class="form-label" for="import-cap-id-select">Capability ID Column</label>
+            <select class="form-select" id="import-cap-id-select" onchange="ReqApp.updateImportPreview('capabilities')">
+              <option value="">-- Upload a file first --</option>
+            </select>
+          </div>
+          <div class="form-group" style="flex: 1;">
+            <label class="form-label" for="import-cap-desc-select">Description Column</label>
+            <select class="form-select" id="import-cap-desc-select" onchange="ReqApp.updateImportPreview('capabilities')">
+              <option value="">-- Upload a file first --</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Mapped Data Preview (First 3 Rows)</label>
+          <div id="import-capabilities-preview" class="import-preview-box">
+            <div style="color:var(--text-secondary); font-size:12px; padding:12px; text-align:center;">Upload a file and map columns to preview data</div>
+          </div>
+        </div>
+      </div>
+      <footer class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="ReqApp.closeModal('import-capabilities-modal')">Cancel</button>
+        <button type="button" class="btn btn-primary" id="import-capabilities-confirm-btn" onclick="ReqApp.confirmImport('capabilities')" disabled>Confirm Import</button>
+      </footer>
+    </div>
+  </div>
+
+  <!-- Import Requirements Modal -->
+  <div class="modal-backdrop" id="import-requirements-modal">
+    <div class="modal-content">
+      <header class="modal-header">
+        <h2>Import Requirements from Excel</h2>
+        <button class="modal-close" onclick="ReqApp.closeModal('import-requirements-modal')">&times;</button>
+      </header>
+      <div class="modal-body">
+        <div class="form-group">
+          <label class="form-label" for="import-req-program-select">Target Program</label>
+          <select class="form-select" id="import-req-program-select">
+            <!-- Populated dynamically -->
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="import-req-file-input">Select Excel / CSV File</label>
+          <input type="file" class="form-input" id="import-req-file-input" accept=".xlsx, .xls, .csv" onchange="ReqApp.handleExcelUpload(event, 'requirements')" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="import-requirements-sheet-select">Select Sheet</label>
+          <select class="form-select" id="import-requirements-sheet-select" onchange="ReqApp.handleSheetChange('requirements')">
+            <option value="">-- Upload a file first --</option>
+          </select>
+        </div>
+        <div style="display: flex; gap: 16px;">
+          <div class="form-group" style="flex: 1;">
+            <label class="form-label" for="import-req-id-select">Requirement ID Column</label>
+            <select class="form-select" id="import-req-id-select" onchange="ReqApp.updateImportPreview('requirements')">
+              <option value="">-- Upload a file first --</option>
+            </select>
+          </div>
+          <div class="form-group" style="flex: 1;">
+            <label class="form-label" for="import-req-desc-select">Description Column</label>
+            <select class="form-select" id="import-req-desc-select" onchange="ReqApp.updateImportPreview('requirements')">
+              <option value="">-- Upload a file first --</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="import-req-cap-select">Linked Capability ID Column (Optional)</label>
+          <select class="form-select" id="import-req-cap-select" onchange="ReqApp.updateImportPreview('requirements')">
+            <option value="">-- Upload a file first --</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Mapped Data Preview (First 3 Rows)</label>
+          <div id="import-requirements-preview" class="import-preview-box">
+            <div style="color:var(--text-secondary); font-size:12px; padding:12px; text-align:center;">Upload a file and map columns to preview data</div>
+          </div>
+        </div>
+      </div>
+      <footer class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="ReqApp.closeModal('import-requirements-modal')">Cancel</button>
+        <button type="button" class="btn btn-primary" id="import-requirements-confirm-btn" onclick="ReqApp.confirmImport('requirements')" disabled>Confirm Import</button>
+      </footer>
+    </div>
+  </div>
+
+  <!-- Settings Modal -->
+  <div class="modal-backdrop" id="settings-modal">
+    <div class="modal-content" style="max-width: 480px;">
+      <header class="modal-header">
+        <h2 style="display:flex; align-items:center; gap:8px;">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+          <span>System Settings</span>
+        </h2>
+        <button class="modal-close" onclick="ReqApp.closeModal('settings-modal')">&times;</button>
+      </header>
+      <div class="modal-body" style="display:flex; flex-direction:column; gap:20px;">
+        <div>
+          <h3 style="font-size:13px; font-weight:700; text-transform:uppercase; color:var(--text-secondary); margin-top:0; margin-bottom:10px; border-bottom:1px solid var(--border-color); padding-bottom:6px;">
+            Application State Data
+          </h3>
+          <p style="font-size:12px; color:var(--text-secondary); margin-bottom:12px; line-height:1.4;">
+            Export or import the entire workspace state (programs, requirements, capabilities, tests, and team members) as a JSON file.
+          </p>
+          <div style="display:flex; gap:10px; flex-wrap:wrap;">
+            <button class="btn btn-secondary btn-sm" onclick="ReqApp.closeModal('settings-modal'); ReqApp.exportData();" style="display:inline-flex; align-items:center; gap:6px;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+              <span>Export State JSON</span>
+            </button>
+            <button class="btn btn-secondary btn-sm" onclick="ReqApp.closeModal('settings-modal'); document.getElementById('import-file-input').click();" style="display:inline-flex; align-items:center; gap:6px;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+              <span>Import State JSON</span>
+            </button>
+          </div>
+        </div>
+
+        <div>
+          <h3 style="font-size:13px; font-weight:700; text-transform:uppercase; color:var(--text-secondary); margin-top:0; margin-bottom:10px; border-bottom:1px solid var(--border-color); padding-bottom:6px;">
+            System Configuration
+          </h3>
+          <p style="font-size:12px; color:var(--text-secondary); margin-bottom:12px; line-height:1.4;">
+            Manage global systems settings and custom codes used across the workspace.
+          </p>
+          <div style="display:flex; gap:10px; flex-wrap:wrap;">
+            <button class="btn btn-secondary btn-sm" onclick="ReqApp.closeModal('settings-modal'); ReqApp.openModal('test-types-modal');">
+              <span>Test Types</span>
+            </button>
+            <button class="btn btn-secondary btn-sm" onclick="ReqApp.closeModal('settings-modal'); ReqApp.openModal('component-codes-modal');">
+              <span>Component Codes</span>
+            </button>
+            <button class="btn btn-secondary btn-sm" onclick="ReqApp.closeModal('settings-modal'); ReqApp.openModal('team-modal');">
+              <span>Team Roster</span>
+            </button>
+          </div>
+        </div>
+
+        <div>
+          <h3 style="font-size:13px; font-weight:700; text-transform:uppercase; color:var(--status-failed); margin-top:0; margin-bottom:10px; border-bottom:1px solid var(--status-failed-border); padding-bottom:6px;">
+            Danger Zone
+          </h3>
+          <p style="font-size:12px; color:var(--text-secondary); margin-bottom:12px; line-height:1.4;">
+            Warning: Resetting mock data clears all custom inputs and reverts state to standard flight instrument project templates. This action is irreversible.
+          </p>
+          <button class="btn btn-danger btn-sm" onclick="ReqApp.closeModal('settings-modal'); ReqApp.resetData();" style="display:inline-flex; align-items:center; gap:6px;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path></svg>
+            <span>Clear & Reset Mock Data</span>
+          </button>
+        </div>
+      </div>
+      <footer class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="ReqApp.closeModal('settings-modal')">Close</button>
+      </footer>
+    </div>
+  </div>
+
+  <!-- Print Report Container (Visible only in print media) -->
+  <div id="print-report-container" class="print-report-container" aria-live="polite"></div>
+
+  <!-- Data Script -->
+  <script src="data.js"></script>
+  <!-- Application Script -->
+  <script src="app.js"></script>
+</body>
+</html>
