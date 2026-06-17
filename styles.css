@@ -1238,7 +1238,7 @@ body {
   white-space: nowrap;
   text-overflow: ellipsis;
   overflow: hidden;
-  max-width: 480px; /* Show more text by default */
+  max-width: 900px; /* Show more text by default */
   font-weight: 500;
   color: var(--text-primary);
 }
@@ -1895,6 +1895,14 @@ body {
   background-color: rgba(59, 130, 246, 0.08) !important;
 }
 
+/* Traceability Columns & Layout */
+#traceability-graph-container {
+  /* Restored full page scroll */
+}
 
-
-
+.trace-nodes-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 4px;
+}

@@ -695,6 +695,10 @@
           <div id="tab-content-coverage" class="modal-tab-pane" style="display: none;">
             <div class="form-group" style="margin-bottom: 0;">
               <label class="form-label">Passes off Requirements</label>
+              <div style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px;">
+                <input type="text" id="test-requirements-search" class="form-input" placeholder="Search requirements by ID, component, or description..." oninput="ReqApp.filterTestRequirements()">
+                <div id="test-requirements-search-stats" style="font-size: 11px; color: var(--text-secondary); font-style: italic; display: none;"></div>
+              </div>
               <div id="test-requirements-checkbox-list" style="max-height: 250px; overflow-y: auto; border:1px solid var(--border-color); border-radius:8px; padding:12px; background-color: var(--input-bg); display:flex; flex-direction:column; gap:6px;">
                 <!-- Populated dynamically -->
               </div>

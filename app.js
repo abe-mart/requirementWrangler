@@ -8,6 +8,10 @@
   let reqViewMode = localStorage.getItem('req_view_mode') || 'grid'; // 'grid' or 'list'
   let selectedProgramId = state.programs.length > 0 ? state.programs[0].id : null;
 
+  // Traceability page states
+  let traceabilityData = { caps: [], reqs: [], tests: [] };
+  let currentHoveredTraceNode = null;
+
   // View headings mapping
   const viewTitles = {
     dashboard: 'Dashboard Overview',
@@ -242,6 +246,17 @@
     const container = document.getElementById('test-requirements-checkbox-list');
     if (!programSelect || !container) return;
 
+    // Reset search filter
+    const searchInput = document.getElementById('test-requirements-search');
+    if (searchInput) {
+      searchInput.value = '';
+    }
+    const statsEl = document.getElementById('test-requirements-search-stats');
+    if (statsEl) {
+      statsEl.style.display = 'none';
+      statsEl.innerText = '';
+    }
+
     const programId = programSelect.value;
     if (!programId) {
       container.innerHTML = '<div style="color:var(--text-secondary); font-size:12px; padding:4px;">Select a program first</div>';
@@ -260,13 +275,50 @@
 
     container.innerHTML = programReqs.map(r => {
       const isChecked = checkedIds.includes(r.id) ? 'checked' : '';
+      const compCode = r.component || 'SE';
       return `
         <label style="display:flex; align-items:flex-start; gap:8px; font-size:12px; cursor:pointer; color:var(--text-primary); margin: 2px 0;">
           <input type="checkbox" name="test-requirement-checkbox" value="${escapeHTML(r.id)}" ${isChecked} style="margin-top:2px;">
-          <span><strong>${escapeHTML(r.id)}</strong>: ${escapeHTML(r.description)}</span>
+          <span><strong>${escapeHTML(r.id)}</strong> <span class="badge" style="background-color: var(--border-color); color: var(--text-secondary); font-size: 8px; padding: 1px 4px; font-weight: 700; border-radius: 3px; margin-right: 4px; vertical-align: middle;">${escapeHTML(compCode)}</span>: ${escapeHTML(r.description)}</span>
         </label>
       `;
     }).join('');
+  }
+
+  // Filter requirements checkboxes by search term
+  function filterTestRequirements() {
+    const searchInput = document.getElementById('test-requirements-search');
+    if (!searchInput) return;
+    const query = searchInput.value.toLowerCase().trim();
+
+    const container = document.getElementById('test-requirements-checkbox-list');
+    if (!container) return;
+
+    const statsEl = document.getElementById('test-requirements-search-stats');
+
+    const labels = container.querySelectorAll('label');
+    let visibleCount = 0;
+    const totalCount = labels.length;
+
+    labels.forEach(label => {
+      const text = label.textContent.toLowerCase();
+      if (text.includes(query)) {
+        label.style.display = 'flex';
+        visibleCount++;
+      } else {
+        label.style.display = 'none';
+      }
+    });
+
+    if (statsEl) {
+      if (query === '') {
+        statsEl.style.display = 'none';
+        statsEl.innerText = '';
+      } else {
+        statsEl.style.display = 'block';
+        statsEl.innerText = `Showing ${visibleCount} of ${totalCount} requirements`;
+      }
+    }
   }
 
   // Render subtask drop-downs inside Test modal if type is SIL, HIL, or Monte Carlo
@@ -2414,195 +2466,378 @@
       }).join('');
     }
 
-    // Set SVG size explicitly to match container scroll size
-    const updateSvgSize = () => {
-      svgElement.style.width = graphContainer.scrollWidth + 'px';
-      svgElement.style.height = graphContainer.scrollHeight + 'px';
+    // Save filtered data for scrolls/hovers
+    traceabilityData = {
+      caps: filteredCaps,
+      reqs: filteredReqs,
+      tests: filteredTests
     };
-    updateSvgSize();
 
-    // Use delayed call to ensure elements are rendered and offset parameters are final
-    setTimeout(() => {
-      if (!document.getElementById('traceability-svg')) return; // check if view pane is active
-      updateSvgSize();
-
-      const containerRect = graphContainer.getBoundingClientRect();
-      const svgRect = svgElement.getBoundingClientRect();
-      const offsetX = containerRect.left - svgRect.left;
-      const offsetY = containerRect.top - svgRect.top;
-
-      const pathsData = [];
-
-      // Capability -> Requirement paths
-      filteredCaps.forEach(c => {
-        const capCard = document.getElementById(`trace-node-cap-${c.id}`);
-        if (!capCard) return;
-        const capRect = capCard.getBoundingClientRect();
-
-        const linkedReqs = filteredReqs.filter(r => r.capabilityId === c.id);
-
-        linkedReqs.forEach(r => {
-          const reqCard = document.getElementById(`trace-node-req-${r.id}`);
-          if (!reqCard) return;
-          const reqRect = reqCard.getBoundingClientRect();
-
-          const x1 = capRect.right - containerRect.left + offsetX;
-          const y1 = capRect.top + capRect.height / 2 - containerRect.top + offsetY;
-          const x2 = reqRect.left - containerRect.left + offsetX;
-          const y2 = reqRect.top + reqRect.height / 2 - containerRect.top + offsetY;
-
-          const cp1x = x1 + (x2 - x1) * 0.45;
-          const cp1y = y1;
-          const cp2x = x1 + (x2 - x1) * 0.55;
-          const cp2y = y2;
-
-          const pathD = `M ${x1} ${y1} C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${x2} ${y2}`;
-
-          const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-          path.setAttribute("d", pathD);
-          path.setAttribute("class", "trace-path");
-          path.dataset.cap = c.id;
-          path.dataset.req = r.id;
-
-          svgElement.appendChild(path);
-          pathsData.push({ element: path, cap: c.id, req: r.id, test: null });
-        });
+    // Bind hover event listeners to newly rendered cards
+    const allCards = document.querySelectorAll(".trace-node");
+    allCards.forEach(card => {
+      card.addEventListener("mouseenter", () => {
+        const type = card.dataset.type;
+        const id = card.dataset.id;
+        applyTraceHighlights(id, type);
       });
 
-      // Requirement -> Test paths
-      filteredReqs.forEach(r => {
+      card.addEventListener("mouseleave", () => {
+        clearTraceHighlights();
+      });
+    });
+
+    // Draw initial paths
+    setTimeout(() => {
+      drawTracePaths();
+    }, 100);
+  }
+
+  // Draw trace connections SVG paths
+  function drawTracePaths() {
+    const svgElement = document.getElementById('traceability-svg');
+    const graphContainer = document.getElementById('traceability-graph-container');
+    if (!svgElement || !graphContainer) return;
+
+    // Clear SVG viewport
+    svgElement.innerHTML = '';
+
+    // Set SVG size explicitly to match container scroll size
+    svgElement.style.width = graphContainer.scrollWidth + 'px';
+    svgElement.style.height = graphContainer.scrollHeight + 'px';
+
+    const containerRect = graphContainer.getBoundingClientRect();
+    const svgRect = svgElement.getBoundingClientRect();
+    const offsetX = containerRect.left - svgRect.left;
+    const offsetY = containerRect.top - svgRect.top;
+
+    const { caps, reqs, tests } = traceabilityData;
+
+    // Get active elements if currently hovering
+    let activeCaps = new Set();
+    let activeReqs = new Set();
+    let activeTests = new Set();
+    if (currentHoveredTraceNode) {
+      const activeData = getActiveTraceElements(currentHoveredTraceNode.id, currentHoveredTraceNode.type);
+      activeCaps = activeData.activeCaps;
+      activeReqs = activeData.activeReqs;
+      activeTests = activeData.activeTests;
+    }
+
+    // Capability -> Requirement paths
+    caps.forEach(c => {
+      const capCard = document.getElementById(`trace-node-cap-${c.id}`);
+      if (!capCard || capCard.style.display === 'none') return;
+      const capRect = capCard.getBoundingClientRect();
+
+      const linkedReqs = reqs.filter(r => r.capabilityId === c.id);
+
+      linkedReqs.forEach(r => {
         const reqCard = document.getElementById(`trace-node-req-${r.id}`);
-        if (!reqCard) return;
+        if (!reqCard || reqCard.style.display === 'none') return;
         const reqRect = reqCard.getBoundingClientRect();
 
-        const linkedTests = filteredTests.filter(t => t.requirementIds && t.requirementIds.includes(r.id));
+        const x1 = capRect.right - containerRect.left + offsetX;
+        const y1 = capRect.top + capRect.height / 2 - containerRect.top + offsetY;
+        const x2 = reqRect.left - containerRect.left + offsetX;
+        const y2 = reqRect.top + reqRect.height / 2 - containerRect.top + offsetY;
 
-        linkedTests.forEach(t => {
-          const testCard = document.getElementById(`trace-node-test-${t.id}`);
-          if (!testCard) return;
-          const testRect = testCard.getBoundingClientRect();
+        const cp1x = x1 + (x2 - x1) * 0.45;
+        const cp1y = y1;
+        const cp2x = x1 + (x2 - x1) * 0.55;
+        const cp2y = y2;
 
-          const x1 = reqRect.right - containerRect.left + offsetX;
-          const y1 = reqRect.top + reqRect.height / 2 - containerRect.top + offsetY;
-          const x2 = testRect.left - containerRect.left + offsetX;
-          const y2 = testRect.top + testRect.height / 2 - containerRect.top + offsetY;
+        const pathD = `M ${x1} ${y1} C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${x2} ${y2}`;
 
-          const cp1x = x1 + (x2 - x1) * 0.45;
-          const cp1y = y1;
-          const cp2x = x1 + (x2 - x1) * 0.55;
-          const cp2y = y2;
+        const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        path.setAttribute("d", pathD);
+        
+        let pathClass = "trace-path";
+        if (currentHoveredTraceNode) {
+          const isPathActive = activeCaps.has(c.id) && activeReqs.has(r.id);
+          pathClass += isPathActive ? " highlighted" : " dimmed";
+        }
+        path.setAttribute("class", pathClass);
+        path.dataset.cap = c.id;
+        path.dataset.req = r.id;
 
-          const pathD = `M ${x1} ${y1} C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${x2} ${y2}`;
-
-          const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-          path.setAttribute("d", pathD);
-          path.setAttribute("class", "trace-path");
-          path.dataset.req = r.id;
-          path.dataset.test = t.id;
-
-          svgElement.appendChild(path);
-          pathsData.push({ element: path, cap: null, req: r.id, test: t.id });
-        });
+        svgElement.appendChild(path);
       });
+    });
 
-      // Hover bindings
-      const allCards = document.querySelectorAll(".trace-node");
-      allCards.forEach(card => {
-        card.addEventListener("mouseenter", () => {
-          const type = card.dataset.type;
-          const id = card.dataset.id;
+    // Requirement -> Test paths
+    reqs.forEach(r => {
+      const reqCard = document.getElementById(`trace-node-req-${r.id}`);
+      if (!reqCard || reqCard.style.display === 'none') return;
+      const reqRect = reqCard.getBoundingClientRect();
 
-          let activeCaps = new Set();
-          let activeReqs = new Set();
-          let activeTests = new Set();
+      const linkedTests = tests.filter(t => t.requirementIds && t.requirementIds.includes(r.id));
 
-          if (type === "capability") {
-            activeCaps.add(id);
-            state.requirements.forEach(r => {
-              if (r.capabilityId === id && reqIds.includes(r.id)) {
-                activeReqs.add(r.id);
-                state.tests.forEach(t => {
-                  if (t.requirementIds && t.requirementIds.includes(r.id)) {
-                    activeTests.add(t.id);
-                  }
-                });
-              }
-            });
-          } else if (type === "requirement") {
-            activeReqs.add(id);
-            const req = state.requirements.find(r => r.id === id);
+      linkedTests.forEach(t => {
+        const testCard = document.getElementById(`trace-node-test-${t.id}`);
+        if (!testCard || testCard.style.display === 'none') return;
+        const testRect = testCard.getBoundingClientRect();
+
+        const x1 = reqRect.right - containerRect.left + offsetX;
+        const y1 = reqRect.top + reqRect.height / 2 - containerRect.top + offsetY;
+        const x2 = testRect.left - containerRect.left + offsetX;
+        const y2 = testRect.top + testRect.height / 2 - containerRect.top + offsetY;
+
+        const cp1x = x1 + (x2 - x1) * 0.45;
+        const cp1y = y1;
+        const cp2x = x1 + (x2 - x1) * 0.55;
+        const cp2y = y2;
+
+        const pathD = `M ${x1} ${y1} C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${x2} ${y2}`;
+
+        const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        path.setAttribute("d", pathD);
+        
+        let pathClass = "trace-path";
+        if (currentHoveredTraceNode) {
+          const isPathActive = activeReqs.has(r.id) && activeTests.has(t.id);
+          pathClass += isPathActive ? " highlighted" : " dimmed";
+        }
+        path.setAttribute("class", pathClass);
+        path.dataset.req = r.id;
+        path.dataset.test = t.id;
+
+        svgElement.appendChild(path);
+      });
+    });
+  }
+
+  // Helper function to extract active elements in trace path
+  // Draw trace connections SVG paths
+  function drawTracePaths() {
+    const svgElement = document.getElementById('traceability-svg');
+    const graphContainer = document.getElementById('traceability-graph-container');
+    if (!svgElement || !graphContainer) return;
+
+    // Clear SVG viewport
+    svgElement.innerHTML = '';
+
+    // Set SVG size explicitly to match container scroll size
+    svgElement.style.width = graphContainer.scrollWidth + 'px';
+    svgElement.style.height = graphContainer.scrollHeight + 'px';
+
+    const containerRect = graphContainer.getBoundingClientRect();
+    const svgRect = svgElement.getBoundingClientRect();
+    const offsetX = containerRect.left - svgRect.left;
+    const offsetY = containerRect.top - svgRect.top;
+
+    const { caps, reqs, tests } = traceabilityData;
+
+    // Get active elements if currently hovering
+    let activeCaps = new Set();
+    let activeReqs = new Set();
+    let activeTests = new Set();
+    if (currentHoveredTraceNode) {
+      const activeData = getActiveTraceElements(currentHoveredTraceNode.id, currentHoveredTraceNode.type);
+      activeCaps = activeData.activeCaps;
+      activeReqs = activeData.activeReqs;
+      activeTests = activeData.activeTests;
+    }
+
+    // Capability -> Requirement paths
+    caps.forEach(c => {
+      const capCard = document.getElementById(`trace-node-cap-${c.id}`);
+      if (!capCard || capCard.style.display === 'none') return;
+      const capRect = capCard.getBoundingClientRect();
+
+      const linkedReqs = reqs.filter(r => r.capabilityId === c.id);
+
+      linkedReqs.forEach(r => {
+        const reqCard = document.getElementById(`trace-node-req-${r.id}`);
+        if (!reqCard || reqCard.style.display === 'none') return;
+        const reqRect = reqCard.getBoundingClientRect();
+
+        const x1 = capRect.right - containerRect.left + offsetX;
+        const y1 = capRect.top + capRect.height / 2 - containerRect.top + offsetY;
+        const x2 = reqRect.left - containerRect.left + offsetX;
+        const y2 = reqRect.top + reqRect.height / 2 - containerRect.top + offsetY;
+
+        const cp1x = x1 + (x2 - x1) * 0.45;
+        const cp1y = y1;
+        const cp2x = x1 + (x2 - x1) * 0.55;
+        const cp2y = y2;
+
+        const pathD = `M ${x1} ${y1} C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${x2} ${y2}`;
+
+        const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        path.setAttribute("d", pathD);
+        
+        let pathClass = "trace-path";
+        if (currentHoveredTraceNode) {
+          const isPathActive = activeCaps.has(c.id) && activeReqs.has(r.id);
+          pathClass += isPathActive ? " highlighted" : " dimmed";
+        }
+        path.setAttribute("class", pathClass);
+        path.dataset.cap = c.id;
+        path.dataset.req = r.id;
+
+        svgElement.appendChild(path);
+      });
+    });
+
+    // Requirement -> Test paths
+    reqs.forEach(r => {
+      const reqCard = document.getElementById(`trace-node-req-${r.id}`);
+      if (!reqCard || reqCard.style.display === 'none') return;
+      const reqRect = reqCard.getBoundingClientRect();
+
+      const linkedTests = tests.filter(t => t.requirementIds && t.requirementIds.includes(r.id));
+
+      linkedTests.forEach(t => {
+        const testCard = document.getElementById(`trace-node-test-${t.id}`);
+        if (!testCard || testCard.style.display === 'none') return;
+        const testRect = testCard.getBoundingClientRect();
+
+        const x1 = reqRect.right - containerRect.left + offsetX;
+        const y1 = reqRect.top + reqRect.height / 2 - containerRect.top + offsetY;
+        const x2 = testRect.left - containerRect.left + offsetX;
+        const y2 = testRect.top + testRect.height / 2 - containerRect.top + offsetY;
+
+        const cp1x = x1 + (x2 - x1) * 0.45;
+        const cp1y = y1;
+        const cp2x = x1 + (x2 - x1) * 0.55;
+        const cp2y = y2;
+
+        const pathD = `M ${x1} ${y1} C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${x2} ${y2}`;
+
+        const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        path.setAttribute("d", pathD);
+        
+        let pathClass = "trace-path";
+        if (currentHoveredTraceNode) {
+          const isPathActive = activeReqs.has(r.id) && activeTests.has(t.id);
+          pathClass += isPathActive ? " highlighted" : " dimmed";
+        }
+        path.setAttribute("class", pathClass);
+        path.dataset.req = r.id;
+        path.dataset.test = t.id;
+
+        svgElement.appendChild(path);
+      });
+    });
+  }
+
+  // Helper function to extract active elements in trace path
+  function getActiveTraceElements(id, type) {
+    const programSelect = document.getElementById('traceability-program-select');
+    const programId = programSelect ? programSelect.value : 'ALL';
+    let filteredReqs = state.requirements;
+    if (programId !== 'ALL') {
+      filteredReqs = state.requirements.filter(r => r.programId === programId);
+    }
+    const reqIds = filteredReqs.map(r => r.id);
+
+    let activeCaps = new Set();
+    let activeReqs = new Set();
+    let activeTests = new Set();
+
+    if (type === "capability") {
+      activeCaps.add(id);
+      state.requirements.forEach(r => {
+        if (r.capabilityId === id && reqIds.includes(r.id)) {
+          activeReqs.add(r.id);
+          state.tests.forEach(t => {
+            if (t.requirementIds && t.requirementIds.includes(r.id)) {
+              activeTests.add(t.id);
+            }
+          });
+        }
+      });
+    } else if (type === "requirement") {
+      activeReqs.add(id);
+      const req = state.requirements.find(r => r.id === id);
+      if (req && req.capabilityId) {
+        activeCaps.add(req.capabilityId);
+      }
+      state.tests.forEach(t => {
+        if (t.requirementIds && t.requirementIds.includes(id)) {
+          activeTests.add(t.id);
+        }
+      });
+    } else if (type === "test") {
+      activeTests.add(id);
+      const test = state.tests.find(t => t.id === id);
+      if (test && test.requirementIds) {
+        test.requirementIds.forEach(reqId => {
+          if (reqIds.includes(reqId)) {
+            activeReqs.add(reqId);
+            const req = state.requirements.find(r => r.id === reqId);
             if (req && req.capabilityId) {
               activeCaps.add(req.capabilityId);
             }
-            state.tests.forEach(t => {
-              if (t.requirementIds && t.requirementIds.includes(id)) {
-                activeTests.add(t.id);
-              }
-            });
-          } else if (type === "test") {
-            activeTests.add(id);
-            const test = state.tests.find(t => t.id === id);
-            if (test && test.requirementIds) {
-              test.requirementIds.forEach(reqId => {
-                if (reqIds.includes(reqId)) {
-                  activeReqs.add(reqId);
-                  const req = state.requirements.find(r => r.id === reqId);
-                  if (req && req.capabilityId) {
-                    activeCaps.add(req.capabilityId);
-                  }
-                }
-              });
-            }
           }
-
-          // Apply highlights
-          allCards.forEach(c => {
-            const cType = c.dataset.type;
-            const cId = c.dataset.id;
-
-            let isActive = false;
-            if (cType === "capability" && activeCaps.has(cId)) isActive = true;
-            else if (cType === "requirement" && activeReqs.has(cId)) isActive = true;
-            else if (cType === "test" && activeTests.has(cId)) isActive = true;
-
-            if (isActive) {
-              c.classList.add("active-trace");
-              c.classList.remove("dimmed");
-            } else {
-              c.classList.remove("active-trace");
-              c.classList.add("dimmed");
-            }
-          });
-
-          pathsData.forEach(p => {
-            let isPathActive = false;
-            if (p.cap && p.req) {
-              if (activeCaps.has(p.cap) && activeReqs.has(p.req)) isPathActive = true;
-            } else if (p.req && p.test) {
-              if (activeReqs.has(p.req) && activeTests.has(p.test)) isPathActive = true;
-            }
-
-            if (isPathActive) {
-              p.element.classList.add("highlighted");
-              p.element.classList.remove("dimmed");
-            } else {
-              p.element.classList.remove("highlighted");
-              p.element.classList.add("dimmed");
-            }
-          });
         });
+      }
+    }
 
-        card.addEventListener("mouseleave", () => {
-          allCards.forEach(c => {
-            c.classList.remove("active-trace", "dimmed");
-          });
-          pathsData.forEach(p => {
-            p.element.classList.remove("highlighted", "dimmed");
-          });
-        });
-      });
-    }, 100);
+    return { activeCaps, activeReqs, activeTests };
   }
+
+  // Apply Trace highlights and focus-collapse unrelated columns
+  function applyTraceHighlights(id, type) {
+    currentHoveredTraceNode = { id, type };
+
+    const { activeCaps, activeReqs, activeTests } = getActiveTraceElements(id, type);
+
+    const allCards = document.querySelectorAll(".trace-node");
+    allCards.forEach(c => {
+      const cType = c.dataset.type;
+      const cId = c.dataset.id;
+
+      let isActive = false;
+      if (cType === "capability" && activeCaps.has(cId)) isActive = true;
+      else if (cType === "requirement" && activeReqs.has(cId)) isActive = true;
+      else if (cType === "test" && activeTests.has(cId)) isActive = true;
+
+      if (isActive) {
+        c.classList.add("active-trace");
+        c.classList.remove("dimmed");
+      } else {
+        c.classList.remove("active-trace");
+        c.classList.add("dimmed");
+      }
+
+      // Hide unrelated cards in other columns to collapse them vertically
+      if (cType !== type) {
+        if (isActive) {
+          c.style.display = "";
+        } else {
+          c.style.display = "none";
+        }
+      } else {
+        // Keep hovered card's column fully visible to avoid layout jump under cursor
+        c.style.display = "";
+      }
+    });
+
+    // Schedule path drawing AFTER layout shifts have occurred
+    setTimeout(() => {
+      drawTracePaths();
+    }, 50);
+  }
+
+  // Clear Trace highlights and restore full columns
+  function clearTraceHighlights() {
+    currentHoveredTraceNode = null;
+
+    const allCards = document.querySelectorAll(".trace-node");
+    allCards.forEach(c => {
+      c.classList.remove("active-trace", "dimmed");
+      c.style.display = "";
+    });
+
+    // Schedule path drawing AFTER layout has expanded back to original height
+    setTimeout(() => {
+      drawTracePaths();
+    }, 50);
+  }
+
+
 
   // Create a new test with program and requirement preselected
   function createTestForReq(programId, reqId) {
@@ -3595,6 +3830,7 @@
     openLinkTestModal,
     saveLinkTest,
     populateTestRequirements,
+    filterTestRequirements,
     createTestForReq,
     createRequirementForCap,
     updateModalPassedDateDisplay,
