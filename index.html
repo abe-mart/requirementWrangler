@@ -84,6 +84,10 @@
           <h1 id="page-heading">Dashboard</h1>
         </div>
         <div class="top-actions">
+          <div id="sync-status-container" onclick="ReqApp.openModal('settings-modal')" style="display: inline-flex; align-items: center; gap: 8px; margin-right: 8px; font-size: 13px; color: var(--text-secondary); background: var(--bg-card); padding: 6px 12px; border-radius: 20px; border: 1px solid var(--border-color); font-weight: 500; height: 38px; cursor: pointer; transition: all 0.2s ease;" class="sync-status-pill" title="Click to manage shared database sync">
+            <span id="sync-status-dot" style="width: 8px; height: 8px; border-radius: 50%; display: inline-block; background-color: var(--text-secondary); transition: background-color 0.3s ease;"></span>
+            <span id="sync-status-text">Disconnected</span>
+          </div>
           <button class="btn btn-secondary btn-sm" id="onboarding-tour-btn" onclick="ReqApp.startTour()" style="display:inline-flex; align-items:center; gap:6px; margin-right:8px; height: 38px;">
             <span>💡 Guided Tour</span>
           </button>
@@ -101,6 +105,14 @@
 
       <!-- View Containers -->
       <div class="view-container">
+        <!-- Reconnection Banner -->
+        <div id="shared-reconnect-banner" class="reconnect-banner" style="display: none;">
+          <span style="display: flex; align-items: center; gap: 8px;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--status-pending)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+            Connection to shared database needs re-authorization.
+          </span>
+          <button class="btn btn-primary btn-sm" onclick="ReqApp.reconnectSharedDatabase()" style="height: 28px; padding: 0 12px; font-size: 11px;">Reconnect</button>
+        </div>
         
         <!-- DASHBOARD VIEW -->
         <section id="view-dashboard" class="view-pane active">
@@ -311,6 +323,9 @@
                 <option value="In Progress">In Progress</option>
                 <option value="Not Started">Not Started</option>
               </select>
+              <select class="select-filter" id="filter-req-component" onchange="ReqApp.render()">
+                <option value="ALL">All Components</option>
+              </select>
               <!-- View Grid/List Toggle Container -->
               <div class="view-toggle-container">
                 <button class="view-toggle-btn active" id="toggle-req-grid" onclick="ReqApp.setRequirementsViewMode('grid')" title="Grid View">
@@ -429,6 +444,9 @@
                 <option value="Passed">Passed</option>
                 <option value="In Progress">In Progress</option>
                 <option value="Not Started">Not Started</option>
+              </select>
+              <select class="select-filter" id="filter-test-component" onchange="ReqApp.render()">
+                <option value="ALL">All Components</option>
               </select>
               <button class="btn btn-secondary" onclick="ReqApp.openModal('team-modal')">
                 <span>👥 Manage Team</span>
@@ -633,6 +651,12 @@
                   <!-- Populated dynamically -->
                 </select>
               </div>
+              <div class="form-group" style="flex: 1;">
+                <label class="form-label" for="test-component-select">Component Code</label>
+                <select class="form-select" id="test-component-select" required>
+                  <!-- Populated dynamically -->
+                </select>
+              </div>
             </div>
 
             <div style="display: flex; gap: 16px;">
@@ -675,14 +699,14 @@
                 </select>
               </div>
               <div class="form-group" style="flex: 1;">
-                <label class="form-label" for="test-location-input">Location (Repo URL or Path)</label>
-                <input type="text" class="form-input" id="test-location-input" placeholder="e.g. https://github.com/org/repo/blob/main/test.py" required>
+                <label class="form-label" for="test-location-input">Location (Optional)</label>
+                <input type="text" class="form-input" id="test-location-input" placeholder="e.g. https://github.com/org/repo/blob/main/test.py">
               </div>
             </div>
 
             <div class="form-group">
-              <label class="form-label" for="test-program-desc-input">Program Context / Scope</label>
-              <input type="text" class="form-input" id="test-program-desc-input" placeholder="e.g. Full payload telemetry integration phase" required>
+              <label class="form-label" for="test-program-desc-input">Program Context / Scope (Optional)</label>
+              <input type="text" class="form-input" id="test-program-desc-input" placeholder="e.g. Full payload telemetry integration phase">
             </div>
 
             <div class="form-group">
@@ -964,6 +988,18 @@
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
               <span>Import State JSON</span>
             </button>
+          </div>
+        </div>
+
+        <div>
+          <h3 style="font-size:13px; font-weight:700; text-transform:uppercase; color:var(--text-secondary); margin-top:0; margin-bottom:10px; border-bottom:1px solid var(--border-color); padding-bottom:6px;">
+            Intranet Shared Database
+          </h3>
+          <p style="font-size:12px; color:var(--text-secondary); margin-bottom:12px; line-height:1.4;">
+            Synchronize requirements and test logs with a shared JSON file on a corporate network share for real-time collaboration.
+          </p>
+          <div id="settings-shared-db-section">
+            <!-- Dynamically populated by JS -->
           </div>
         </div>
 

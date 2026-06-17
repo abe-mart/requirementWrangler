@@ -12,6 +12,378 @@
   let traceabilityData = { caps: [], reqs: [], tests: [] };
   let currentHoveredTraceNode = null;
 
+  // Shared database sync states
+  let sharedFileHandle = null;
+  let isSyncing = false;
+
+  // --- IndexedDB Database Config ---
+  const DB_NAME = 'ReqWranglerSyncDB';
+  const DB_VERSION = 1;
+  const STORE_NAME = 'file_handles';
+  const KEY_NAME = 'shared_handle';
+
+  function getIndexedDBStore() {
+    return new Promise((resolve, reject) => {
+      const request = indexedDB.open(DB_NAME, DB_VERSION);
+      request.onerror = (e) => reject(e);
+      request.onsuccess = (e) => resolve(e.target.result);
+      request.onupgradeneeded = (e) => {
+        const db = e.target.result;
+        if (!db.objectStoreNames.contains(STORE_NAME)) {
+          db.createObjectStore(STORE_NAME);
+        }
+      };
+    });
+  }
+
+  function getStoredFileHandle() {
+    return getIndexedDBStore().then(db => {
+      return new Promise((resolve, reject) => {
+        const transaction = db.transaction([STORE_NAME], 'readonly');
+        const store = transaction.objectStore(STORE_NAME);
+        const request = store.get(KEY_NAME);
+        request.onsuccess = (e) => resolve(e.target.result || null);
+        request.onerror = (e) => reject(e);
+      });
+    });
+  }
+
+  function storeFileHandle(handle) {
+    return getIndexedDBStore().then(db => {
+      return new Promise((resolve, reject) => {
+        const transaction = db.transaction([STORE_NAME], 'readwrite');
+        const store = transaction.objectStore(STORE_NAME);
+        const request = store.put(handle, KEY_NAME);
+        request.onsuccess = () => resolve();
+        request.onerror = (e) => reject(e);
+      });
+    });
+  }
+
+  function removeStoredFileHandle() {
+    return getIndexedDBStore().then(db => {
+      return new Promise((resolve, reject) => {
+        const transaction = db.transaction([STORE_NAME], 'readwrite');
+        const store = transaction.objectStore(STORE_NAME);
+        const request = store.delete(KEY_NAME);
+        request.onsuccess = () => resolve();
+        request.onerror = (e) => reject(e);
+      });
+    });
+  }
+
+  // --- Merge Logic ---
+  function mergeStates(local, remote) {
+    if (!remote) return local;
+
+    function mergeObjectLists(localList, remoteList) {
+      if (!Array.isArray(localList)) return remoteList || [];
+      if (!Array.isArray(remoteList)) return localList || [];
+
+      const remoteMap = new Map(remoteList.map(item => [item.id, item]));
+      const localMap = new Map(localList.map(item => [item.id, item]));
+      const mergedList = [];
+
+      for (const localItem of localList) {
+        const remoteItem = remoteMap.get(localItem.id);
+        if (remoteItem) {
+          mergedList.push(Object.assign({}, remoteItem, localItem));
+        } else {
+          mergedList.push(localItem);
+        }
+      }
+
+      for (const remoteItem of remoteList) {
+        if (!localMap.has(remoteItem.id)) {
+          mergedList.push(remoteItem);
+        }
+      }
+
+      return mergedList;
+    }
+
+    function mergeStringArrays(localArr, remoteArr) {
+      if (!Array.isArray(localArr)) return remoteArr || [];
+      if (!Array.isArray(remoteArr)) return localArr || [];
+      const set = new Set([...remoteArr, ...localArr]);
+      return Array.from(set);
+    }
+
+    const merged = {};
+    merged.programs = mergeObjectLists(local.programs, remote.programs);
+    merged.requirements = mergeObjectLists(local.requirements, remote.requirements);
+    merged.capabilities = mergeObjectLists(local.capabilities, remote.capabilities);
+    merged.tests = mergeObjectLists(local.tests, remote.tests);
+    merged.teamMembers = mergeObjectLists(local.teamMembers, remote.teamMembers);
+    merged.testTypes = mergeStringArrays(local.testTypes, remote.testTypes);
+    merged.componentCodes = mergeStringArrays(local.componentCodes, remote.componentCodes);
+
+    return merged;
+  }
+
+  // --- Shared Database Sync Functions ---
+  async function initSharedDatabase() {
+    try {
+      const handle = await getStoredFileHandle();
+      if (handle) {
+        sharedFileHandle = handle;
+        const perm = await handle.queryPermission({ mode: 'readwrite' });
+        if (perm === 'granted') {
+          updateSyncStatus('connected', `Connected: ${handle.name}`);
+          await pullSharedDatabase();
+        } else {
+          updateSyncStatus('disconnected', 'Authorization Required');
+          const banner = document.getElementById('shared-reconnect-banner');
+          if (banner) banner.style.display = 'flex';
+        }
+      }
+    } catch (err) {
+      console.error("Failed to initialize shared database sync:", err);
+      updateSyncStatus('error', 'Sync Init Error');
+    }
+  }
+
+  async function connectSharedDatabase() {
+    try {
+      const [handle] = await window.showOpenFilePicker({
+        types: [{
+          description: 'JSON Database File',
+          accept: { 'application/json': ['.json'] }
+        }],
+        excludeAcceptAllOption: true,
+        multiple: false
+      });
+
+      if (!handle) return;
+
+      const perm = await handle.requestPermission({ mode: 'readwrite' });
+      if (perm !== 'granted') {
+        alert("Read/Write permission is required to synchronize with the shared database.");
+        return;
+      }
+
+      sharedFileHandle = handle;
+      await storeFileHandle(handle);
+
+      updateSyncStatus('syncing', 'Connecting...');
+      await pullSharedDatabase();
+
+      closeModal('settings-modal');
+      alert(`Successfully connected to shared database: ${handle.name}`);
+    } catch (err) {
+      if (err.name !== 'AbortError') {
+        console.error("Error connecting to shared database:", err);
+        alert(`Failed to connect to shared database: ${err.message}`);
+        updateSyncStatus('error', 'Connection Failed');
+      }
+    }
+  }
+
+  async function reconnectSharedDatabase() {
+    if (!sharedFileHandle) {
+      try {
+        sharedFileHandle = await getStoredFileHandle();
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    if (!sharedFileHandle) {
+      alert("No shared database file handle found. Please connect via settings.");
+      const banner = document.getElementById('shared-reconnect-banner');
+      if (banner) banner.style.display = 'none';
+      return;
+    }
+
+    try {
+      const perm = await sharedFileHandle.requestPermission({ mode: 'readwrite' });
+      if (perm === 'granted') {
+        updateSyncStatus('connected', `Connected: ${sharedFileHandle.name}`);
+        const banner = document.getElementById('shared-reconnect-banner');
+        if (banner) banner.style.display = 'none';
+        await pullSharedDatabase();
+      } else {
+        alert("Permission denied. Could not reconnect.");
+      }
+    } catch (err) {
+      console.error("Error reconnecting to shared database:", err);
+      alert(`Failed to reconnect: ${err.message}`);
+      updateSyncStatus('error', 'Reconnection Failed');
+    }
+  }
+
+  async function disconnectSharedDatabase() {
+    if (confirm("Disconnect from the shared database? You will revert to using browser local storage.")) {
+      try {
+        sharedFileHandle = null;
+        await removeStoredFileHandle();
+        const banner = document.getElementById('shared-reconnect-banner');
+        if (banner) banner.style.display = 'none';
+        updateSyncStatus('disconnected', 'Disconnected');
+      } catch (err) {
+        console.error("Error disconnecting shared database:", err);
+      }
+    }
+  }
+
+  async function pullSharedDatabase() {
+    if (!sharedFileHandle) return;
+    if (isSyncing) return;
+
+    isSyncing = true;
+    updateSyncStatus('syncing', 'Syncing...');
+
+    try {
+      const file = await sharedFileHandle.getFile();
+      const text = await file.text();
+      let remoteState = null;
+      if (text.trim()) {
+        try {
+          remoteState = JSON.parse(text);
+        } catch (e) {
+          console.warn("Shared file is not valid JSON, using local state as primary:", e);
+        }
+      }
+
+      if (remoteState) {
+        state = mergeStates(state, remoteState);
+        state = window.ReqData.saveState(state);
+      }
+
+      await pushSharedDatabaseInternal();
+      updateSyncStatus('connected', `Connected: ${sharedFileHandle.name}`);
+      render();
+    } catch (err) {
+      console.error("Error pulling from shared database:", err);
+      updateSyncStatus('error', 'Sync Error');
+      if (err.name === 'NotAllowedError' || err.name === 'SecurityError') {
+        const banner = document.getElementById('shared-reconnect-banner');
+        if (banner) banner.style.display = 'flex';
+      }
+    } finally {
+      isSyncing = false;
+    }
+  }
+
+  async function pushSharedDatabaseInternal() {
+    if (!sharedFileHandle) return;
+    const writable = await sharedFileHandle.createWritable();
+    await writable.write(JSON.stringify(state, null, 2));
+    await writable.close();
+  }
+
+  async function pushSharedDatabase() {
+    if (!sharedFileHandle) return;
+    if (isSyncing) return;
+
+    isSyncing = true;
+    updateSyncStatus('syncing', 'Saving...');
+
+    try {
+      const file = await sharedFileHandle.getFile();
+      const text = await file.text();
+      let remoteState = null;
+      if (text.trim()) {
+        try {
+          remoteState = JSON.parse(text);
+        } catch (e) {
+          console.warn("Shared file JSON parsing failed during push merge:", e);
+        }
+      }
+
+      if (remoteState) {
+        state = mergeStates(state, remoteState);
+        state = window.ReqData.saveState(state);
+      }
+
+      await pushSharedDatabaseInternal();
+      updateSyncStatus('connected', `Connected: ${sharedFileHandle.name}`);
+    } catch (err) {
+      console.error("Error pushing to shared database:", err);
+      updateSyncStatus('error', 'Save Failed');
+      if (err.name === 'NotAllowedError' || err.name === 'SecurityError') {
+        const banner = document.getElementById('shared-reconnect-banner');
+        if (banner) banner.style.display = 'flex';
+      }
+      throw err;
+    } finally {
+      isSyncing = false;
+    }
+  }
+
+  function updateSyncStatus(status, text) {
+    const dot = document.getElementById('sync-status-dot');
+    const textEl = document.getElementById('sync-status-text');
+    if (textEl) textEl.textContent = text;
+    if (dot) {
+      dot.style.backgroundColor = 'var(--text-secondary)';
+      if (status === 'connected') {
+        dot.style.backgroundColor = 'var(--status-passed)';
+      } else if (status === 'syncing') {
+        dot.style.backgroundColor = 'var(--status-pending)';
+      } else if (status === 'error') {
+        dot.style.backgroundColor = 'var(--status-failed)';
+      }
+    }
+    renderSettingsModalSharedSection();
+  }
+
+  function renderSettingsModalSharedSection() {
+    const section = document.getElementById('settings-shared-db-section');
+    if (!section) return;
+
+    if (sharedFileHandle) {
+      section.innerHTML = `
+        <div style="background: var(--bg-canvas); border: 1px solid var(--border-color); padding: 12px; border-radius: 6px; display: flex; flex-direction: column; gap: 8px;">
+          <div style="display: flex; align-items: center; justify-content: space-between;">
+            <span style="font-size: 13px; font-weight: 600; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 260px;" title="${sharedFileHandle.name}">
+              📄 ${sharedFileHandle.name}
+            </span>
+            <span style="font-size: 11px; color: var(--status-passed); font-weight: 600; display: inline-flex; align-items: center; gap: 4px;">
+              <span style="width: 6px; height: 6px; border-radius: 50%; background-color: var(--status-passed); display: inline-block;"></span>
+              Connected
+            </span>
+          </div>
+          <div style="display: flex; gap: 8px; margin-top: 4px;">
+            <button class="btn btn-secondary btn-sm" id="btn-pull-shared-db" style="display: inline-flex; align-items: center; gap: 4px; padding: 6px 10px; font-size: 11px; height: 28px;">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path></svg>
+              Sync / Pull Updates
+            </button>
+            <button class="btn btn-danger btn-sm" id="btn-disconnect-shared-db" style="display: inline-flex; align-items: center; gap: 4px; padding: 6px 10px; font-size: 11px; height: 28px; background: transparent; border-color: var(--status-failed); color: var(--status-failed);">
+              Disconnect
+            </button>
+          </div>
+        </div>
+      `;
+      // Bind inline click handlers securely to bypass onclick global issues
+      const pullBtn = section.querySelector('#btn-pull-shared-db');
+      if (pullBtn) {
+        pullBtn.addEventListener('click', () => {
+          pullSharedDatabase().then(() => alert('Successfully pulled and merged latest updates.'));
+        });
+      }
+      const disconnectBtn = section.querySelector('#btn-disconnect-shared-db');
+      if (disconnectBtn) {
+        disconnectBtn.addEventListener('click', () => {
+          disconnectSharedDatabase();
+        });
+      }
+    } else {
+      section.innerHTML = `
+        <button class="btn btn-secondary btn-sm" id="btn-connect-shared-db" style="display: inline-flex; align-items: center; gap: 6px;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 16v1a2 2 0 0 1-2 2H3a2 2 0 0 1-2 2V7a2 2 0 0 1 2-2h11a2 2 0 0 1 2 2v1"></path><path d="M18 8h6v8h-6z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+          <span>Connect Shared Database...</span>
+        </button>
+      `;
+      const connectBtn = section.querySelector('#btn-connect-shared-db');
+      if (connectBtn) {
+        connectBtn.addEventListener('click', () => {
+          connectSharedDatabase();
+        });
+      }
+    }
+  }
+
   // View headings mapping
   const viewTitles = {
     dashboard: 'Dashboard Overview',
@@ -155,6 +527,8 @@
       renderTeamList();
     } else if (modalId === 'import-capabilities-modal') {
       resetImportCapabilitiesForm();
+    } else if (modalId === 'settings-modal') {
+      renderSettingsModalSharedSection();
     }
 
     // Configure delete button if present in modal footer
@@ -414,6 +788,7 @@
     const typeSelect = document.getElementById('test-type-select');
     const programSelect = document.getElementById('test-program-select');
     const assigneeSelect = document.getElementById('test-assignee-select');
+    const componentSelect = document.getElementById('test-component-select');
 
     // Populate test types dropdown dynamically
     typeSelect.innerHTML = state.testTypes.map(t =>
@@ -424,6 +799,13 @@
     programSelect.innerHTML = state.programs.map(p =>
       `<option value="${p.id}">${escapeHTML(p.name)}</option>`
     ).join('');
+
+    // Populate component dropdown
+    if (componentSelect) {
+      componentSelect.innerHTML = state.componentCodes.map(c =>
+        `<option value="${c}">${escapeHTML(c)}</option>`
+      ).join('');
+    }
 
     // Populate assignee dropdown
     if (assigneeSelect) {
@@ -438,9 +820,15 @@
       const editingTest = state.tests.find(t => t.id === editId);
       if (editingTest) {
         programSelect.value = editingTest.programId || '';
+        if (componentSelect) {
+          componentSelect.value = editingTest.component || 'SE';
+        }
       }
     } else if (state.programs.length > 0) {
       programSelect.value = state.programs[0].id;
+      if (componentSelect) {
+        componentSelect.value = 'SE';
+      }
     }
 
     // Add dynamic subtasks rendering trigger on test type change
@@ -678,6 +1066,10 @@
           document.getElementById('test-assignee-select').value = item.assigneeId || '';
         }
 
+        if (document.getElementById('test-component-select')) {
+          document.getElementById('test-component-select').value = item.component || 'SE';
+        }
+
         // Render and populate subtask values
         renderSubtaskFields(item.type, item.subtasks);
         
@@ -707,6 +1099,9 @@
     } else if (modalId === 'test-modal') {
       document.getElementById('test-edit-id').value = '';
       document.getElementById('test-form').reset();
+      if (document.getElementById('test-component-select')) {
+        document.getElementById('test-component-select').value = 'SE';
+      }
       document.getElementById('test-notes-input').value = '';
       document.getElementById('test-estimate-input').value = '0';
       renderSubtaskFields('');
@@ -862,6 +1257,8 @@
 
     const assigneeSelectVal = document.getElementById('test-assignee-select') ? document.getElementById('test-assignee-select').value : '';
     const assigneeId = assigneeSelectVal || null;
+    const componentSelectVal = document.getElementById('test-component-select') ? document.getElementById('test-component-select').value : 'SE';
+    const component = componentSelectVal || 'SE';
     const notes = document.getElementById('test-notes-input').value.trim();
     const estimateInputVal = document.getElementById('test-estimate-input') ? document.getElementById('test-estimate-input').value : '0';
     const estimate = parseFloat(estimateInputVal) || 0;
@@ -885,6 +1282,7 @@
         id: newId,
         name,
         type,
+        component,
         location,
         programDescription,
         programId,
@@ -904,6 +1302,7 @@
           id: editId,
           name,
           type,
+          component,
           location,
           programDescription,
           programId,
@@ -941,6 +1340,11 @@
   // Sync state back to local storage and redraw current view
   function syncAndRefresh() {
     state = window.ReqData.saveState(state);
+    if (sharedFileHandle) {
+      pushSharedDatabase().catch(err => {
+        console.error("Shared database background push failed:", err);
+      });
+    }
     render();
   }
 
@@ -1105,9 +1509,9 @@
       try {
         const imported = JSON.parse(e.target.result);
         if (imported.programs && imported.requirements && imported.capabilities && imported.tests) {
-          state = window.ReqData.saveState(imported);
+          state = imported;
           selectedProgramId = state.programs.length > 0 ? state.programs[0].id : null;
-          render();
+          syncAndRefresh();
           alert("Database imported successfully!");
         } else {
           alert("Invalid import format. Check JSON structure.");
@@ -1232,6 +1636,7 @@
   // RENDER CONTROLLERS
   function render() {
     populateProgramFilters();
+    populateComponentFilters();
 
     if (currentView === 'dashboard') {
       renderDashboard();
@@ -1300,22 +1705,53 @@
         planningProgramSelect.value = state.programs[0].id;
       }
     }
+    populateComponentFilters();
+  }
 
+  // Populate component dropdown filters dynamically across all views
+  function populateComponentFilters() {
     const planningComponentFilter = document.getElementById('planning-component-filter');
     if (planningComponentFilter) {
       const currentSelected = planningComponentFilter.value || 'ALL';
-      
       let optionsHtml = '<option value="ALL">All Components</option>';
       state.componentCodes.forEach(code => {
         optionsHtml += `<option value="${escapeHTML(code)}">${escapeHTML(code)}</option>`;
       });
-      
       planningComponentFilter.innerHTML = optionsHtml;
-      
       if (currentSelected === 'ALL' || state.componentCodes.includes(currentSelected)) {
         planningComponentFilter.value = currentSelected;
       } else {
         planningComponentFilter.value = 'ALL';
+      }
+    }
+
+    const filterReqComponent = document.getElementById('filter-req-component');
+    if (filterReqComponent) {
+      const currentSelected = filterReqComponent.value || 'ALL';
+      let optionsHtml = '<option value="ALL">All Components</option>';
+      state.componentCodes.forEach(code => {
+        optionsHtml += `<option value="${escapeHTML(code)}">${escapeHTML(code)}</option>`;
+      });
+      filterReqComponent.innerHTML = optionsHtml;
+      if (currentSelected === 'ALL' || state.componentCodes.includes(currentSelected)) {
+        filterReqComponent.value = currentSelected;
+      } else {
+        filterReqComponent.value = 'ALL';
+      }
+    }
+
+    const filterTestComponent = document.getElementById('filter-test-component');
+    if (filterTestComponent) {
+      const currentSelected = filterTestComponent.value || 'ALL';
+      let optionsHtml = '<option value="ALL">All Components</option>';
+      state.componentCodes.forEach(code => {
+        optionsHtml += `<option value="${escapeHTML(code)}">${escapeHTML(code)}</option>`;
+      });
+      filterTestComponent.innerHTML = optionsHtml;
+      if (currentSelected === 'ALL' || state.componentCodes.includes(currentSelected)) {
+        filterTestComponent.value = currentSelected;
+      } else {
+        filterTestComponent.value = 'ALL';
       }
     }
   }
@@ -1459,14 +1895,8 @@
 
     // Filter pending tests by component and search query
     let filteredPending = pendingTests.filter(t => {
-      // Filter by component (any of its linked requirements must match, or true if componentFilter is 'ALL')
-      let compMatch = true;
-      if (componentFilter !== 'ALL') {
-        compMatch = (t.requirementIds || []).some(reqId => {
-          const req = state.requirements.find(r => r.id === reqId);
-          return req && req.component === componentFilter;
-        });
-      }
+      // Filter by component
+      const compMatch = componentFilter === 'ALL' || t.component === componentFilter;
 
       const searchMatch = t.name.toLowerCase().includes(qPending) || 
                           t.id.toLowerCase().includes(qPending) ||
@@ -1546,6 +1976,7 @@
                 <div class="backlog-card-title drill-link" onclick="ReqApp.drillTo('tests', '${escapeHTML(t.id)}')" title="View test detail">${escapeHTML(t.name)}</div>
                 <div style="display: flex; gap: 4px; align-items: center;">
                   <span class="badge" style="background-color: var(--border-color); color: var(--text-primary); font-size: 9px; padding: 2px 6px; font-weight:700;">${escapeHTML(t.type)}</span>
+                  <span class="badge" style="background-color: var(--border-color); color: var(--text-secondary); font-size: 9px; padding: 2px 6px; font-weight:700; border-radius: 4px;">${escapeHTML(t.component || 'SE')}</span>
                   <span class="badge" style="background-color: rgba(37, 99, 235, 0.08); color: var(--accent-color); border: 1px solid rgba(37, 99, 235, 0.15); font-size: 9px; padding: 2px 6px; font-weight:700; display: inline-flex; align-items: center; gap: 2px;">
                     ⏱️ ${(t.estimate !== undefined ? t.estimate : 0).toFixed(1).replace(/\.0$/, '')}d
                   </span>
@@ -1899,6 +2330,7 @@
     const q = document.getElementById('search-requirements').value.toLowerCase();
     const filterProg = document.getElementById('filter-req-program').value;
     const filterStatus = document.getElementById('filter-req-status').value;
+    const filterComponent = document.getElementById('filter-req-component') ? document.getElementById('filter-req-component').value : 'ALL';
     const contentArea = document.getElementById('requirements-view-content');
     if (!contentArea) return;
 
@@ -1908,7 +2340,8 @@
                         (r.component && r.component.toLowerCase().includes(q));
       const progMatch = filterProg === 'ALL' || r.programId === filterProg;
       const statusMatch = filterStatus === 'ALL' || r.status === filterStatus;
-      return textMatch && progMatch && statusMatch;
+      const componentMatch = filterComponent === 'ALL' || r.component === filterComponent;
+      return textMatch && progMatch && statusMatch && componentMatch;
     });
 
     // Handle empty views
@@ -2212,6 +2645,7 @@
     const filterProgram = document.getElementById('filter-test-program') ? document.getElementById('filter-test-program').value : 'ALL';
     const filterStatus = document.getElementById('filter-test-status').value;
     const filterAssignee = document.getElementById('filter-test-assignee') ? document.getElementById('filter-test-assignee').value : 'ALL';
+    const filterComponent = document.getElementById('filter-test-component') ? document.getElementById('filter-test-component').value : 'ALL';
     const tbody = document.getElementById('tests-table-body');
     if (!tbody) return;
 
@@ -2225,7 +2659,8 @@
       const assigneeMatch = filterAssignee === 'ALL' || 
                            (filterAssignee === 'UNASSIGNED' && !t.assigneeId) ||
                            t.assigneeId === filterAssignee;
-      return textMatch && statusMatch && programMatch && assigneeMatch;
+      const componentMatch = filterComponent === 'ALL' || t.component === filterComponent;
+      return textMatch && statusMatch && programMatch && assigneeMatch && componentMatch;
     });
 
     if (filtered.length === 0) {
@@ -2273,7 +2708,10 @@
           </td>
           <td>
             <div style="font-weight: 600; color: var(--text-primary);">${escapeHTML(t.name)}</div>
-            <div style="font-size: 11px; color: var(--text-secondary);">${escapeHTML(t.id)}</div>
+            <div style="font-size: 11px; color: var(--text-secondary); display: flex; align-items: center; gap: 6px; margin-top: 2px;">
+              <span>${escapeHTML(t.id)}</span>
+              <span class="badge" style="background-color: var(--border-color); color: var(--text-secondary); font-size: 9px; padding: 2px 4px; font-weight: 700; border-radius: 4px;">${escapeHTML(t.component || 'SE')}</span>
+            </div>
           </td>
           <td>
             <span class="badge" style="background-color: var(--border-color); color: var(--text-primary); font-size: 10px;">
@@ -3511,6 +3949,7 @@
   // Self Initialization
   window.onload = function() {
     initTheme();
+    initSharedDatabase();
     
     // Select first program if available
     if (state.programs.length > 0) {
@@ -3783,8 +4222,7 @@
       const [removed] = state.tests.splice(draggedIdx, 1);
       state.tests.splice(targetIdx, 0, removed);
       
-      state = window.ReqData.saveState(state);
-      renderTests();
+      syncAndRefresh();
     }
     
     draggedTestId = null;
@@ -3851,6 +4289,10 @@
     handleTestDragOver,
     handleTestDragLeave,
     handleTestDrop,
-    handleTestDragEnd
+    handleTestDragEnd,
+    connectSharedDatabase,
+    reconnectSharedDatabase,
+    disconnectSharedDatabase,
+    pullSharedDatabase
   };
 })();

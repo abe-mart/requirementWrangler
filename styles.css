@@ -1906,3 +1906,45 @@ body {
   gap: 12px;
   padding: 4px;
 }
+
+/* Reconnection Banner */
+.reconnect-banner {
+  background-color: var(--status-pending-bg);
+  border: 1.5px dashed var(--status-pending);
+  color: var(--text-primary);
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  box-shadow: var(--shadow-sm);
+  animation: slideDown 0.3s ease-out;
+}
+
+@keyframes slideDown {
+  from {
+    transform: translateY(-10px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+/* Clickable Sync Status Badge */
+.sync-status-pill:hover {
+  background-color: var(--border-color) !important;
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-sm);
+}
+
+.sync-status-pill:active {
+  transform: translateY(0);
+}
+
+
