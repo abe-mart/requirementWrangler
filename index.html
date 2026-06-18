@@ -105,14 +105,7 @@
 
       <!-- View Containers -->
       <div class="view-container">
-        <!-- Reconnection Banner -->
-        <div id="shared-reconnect-banner" class="reconnect-banner" style="display: none;">
-          <span style="display: flex; align-items: center; gap: 8px;">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--status-pending)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
-            Connection to shared database needs re-authorization.
-          </span>
-          <button class="btn btn-primary btn-sm" onclick="ReqApp.reconnectSharedDatabase()" style="height: 28px; padding: 0 12px; font-size: 11px;">Reconnect</button>
-        </div>
+        
         
         <!-- DASHBOARD VIEW -->
         <section id="view-dashboard" class="view-pane active">
@@ -188,6 +181,16 @@
               </div>
               <div id="dashboard-program-compliance-list">
                 <!-- Dynamically loaded program status cards -->
+              </div>
+            </div>
+
+            <!-- Recent Activity Log -->
+            <div class="section-card">
+              <div class="section-card-header">
+                <h2>Recent Activity Log</h2>
+              </div>
+              <div id="dashboard-activity-log-list" style="max-height: 300px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; font-size: 12px; padding-right: 4px;">
+                <!-- Dynamically populated -->
               </div>
             </div>
           </div>
@@ -1038,6 +1041,30 @@
       </div>
       <footer class="modal-footer">
         <button type="button" class="btn btn-secondary" onclick="ReqApp.closeModal('settings-modal')">Close</button>
+      </footer>
+    </div>
+  </div>
+
+  <!-- Reconnect / Authorization Required Modal -->
+  <div class="modal-backdrop" id="reconnect-modal">
+    <div class="modal-content" style="max-width: 480px; text-align: center;">
+      <header class="modal-header" style="justify-content: center;">
+        <h2 style="display:flex; align-items:center; gap:8px; color: var(--status-pending);">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+          <span>Authorization Required</span>
+        </h2>
+      </header>
+      <div class="modal-body" style="display:flex; flex-direction:column; gap:16px; padding: 20px 0;">
+        <p style="font-size:13px; color:var(--text-primary); line-height:1.5; margin: 0;">
+          The browser requires user authorization to re-establish the connection to your shared intranet database file.
+        </p>
+        <p style="font-size:12px; color:var(--text-secondary); line-height:1.4; margin: 0;">
+          Please grant permission to resume collaborative updates.
+        </p>
+      </div>
+      <footer class="modal-footer" style="justify-content: center; gap: 12px; border-top: none; padding-top: 0;">
+        <button type="button" class="btn btn-primary" onclick="ReqApp.reconnectSharedDatabase()">Grant Permission & Reconnect</button>
+        <button type="button" class="btn btn-secondary" onclick="ReqApp.closeModal('reconnect-modal')">Work Offline</button>
       </footer>
     </div>
   </div>

@@ -488,6 +488,12 @@ body {
   gap: 24px;
 }
 
+@media (min-width: 1024px) {
+  .dashboard-sections {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
 .section-card {
   background-color: var(--bg-card);
   border: 1px solid var(--border-color);
@@ -1945,6 +1951,42 @@ body {
 
 .sync-status-pill:active {
   transform: translateY(0);
+}
+
+/* Activity Log Item Styling */
+.activity-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 12px;
+  background-color: var(--bg-canvas);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  transition: all 0.2s ease;
+}
+
+.activity-item:hover {
+  border-color: var(--accent-color);
+  background-color: var(--bg-card);
+}
+
+.activity-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
+.activity-time {
+  font-size: 10px;
+  color: var(--text-secondary);
+}
+
+.activity-action {
+  font-weight: 500;
+  color: var(--text-primary);
+  line-height: 1.3;
 }
 
 

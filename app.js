@@ -15,6 +15,11 @@
   // Shared database sync states
   let sharedFileHandle = null;
   let isSyncing = false;
+  let lastSharedFileModifiedTime = 0;
+  let autoPollInterval = null;
+  let offlineRetryTimeout = null;
+  let isOffline = false;
+  let pushPending = false;
 
   // --- IndexedDB Database Config ---
   const DB_NAME = 'ReqWranglerSyncDB';
@@ -72,19 +77,111 @@
     });
   }
 
+  // --- Deletion Tracking & Pruning ---
+  function trackDeletion(id) {
+    if (!state.deletedIds) {
+      state.deletedIds = [];
+    }
+    const existing = state.deletedIds.find(x => typeof x === 'object' && x.id === id);
+    if (existing) {
+      existing.deletedAt = Date.now();
+    } else {
+      state.deletedIds.push({ id, deletedAt: Date.now() });
+    }
+  }
+
+  function untrackDeletion(id) {
+    if (state.deletedIds) {
+      state.deletedIds = state.deletedIds.filter(x => {
+        const itemId = typeof x === 'object' ? x.id : x;
+        return itemId !== id;
+      });
+    }
+  }
+
+  function pruneTombstones() {
+    if (!state.deletedIds) return;
+    const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
+    state.deletedIds = state.deletedIds.filter(x => {
+      if (typeof x === 'object' && x.deletedAt) {
+        return x.deletedAt > thirtyDaysAgo;
+      }
+      return true; // Keep legacy strings
+    });
+  }
+
+  // --- Activity Logging ---
+  function logActivity(actionText) {
+    if (!state.activityLog) {
+      state.activityLog = [];
+    }
+    state.activityLog.unshift({
+      timestamp: new Date().toISOString(),
+      action: actionText
+    });
+    state.activityLog = state.activityLog.slice(0, 100);
+  }
+
+  function formatRelativeTime(isoString) {
+    const date = new Date(isoString);
+    const diffMs = Date.now() - date.getTime();
+    if (diffMs < 60000) return 'Just now';
+    const diffMins = Math.floor(diffMs / 60000);
+    if (diffMins < 60) return `${diffMins}m ago`;
+    const diffHours = Math.floor(diffMins / 60);
+    if (diffHours < 24) return `${diffHours}h ago`;
+    return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  }
+
+  function renderActivityLog() {
+    const list = document.getElementById('dashboard-activity-log-list');
+    if (!list) return;
+
+    if (!state.activityLog || state.activityLog.length === 0) {
+      list.innerHTML = `<div style="color:var(--text-secondary); text-align:center; padding: 20px 0;">No recent activity</div>`;
+      return;
+    }
+
+    list.innerHTML = state.activityLog.map(log => {
+      const timeStr = formatRelativeTime(log.timestamp);
+      return `
+        <div class="activity-item">
+          <div class="activity-header">
+            <span class="activity-time">${timeStr}</span>
+          </div>
+          <div class="activity-action">${escapeHTML(log.action)}</div>
+        </div>
+      `;
+    }).join('');
+  }
+
   // --- Merge Logic ---
   function mergeStates(local, remote) {
     if (!remote) return local;
 
-    function mergeObjectLists(localList, remoteList) {
-      if (!Array.isArray(localList)) return remoteList || [];
-      if (!Array.isArray(remoteList)) return localList || [];
+    // Normalize and merge deletedIds tombstones
+    const localDeleted = (local.deletedIds || []).map(x => typeof x === 'string' ? { id: x, deletedAt: Date.now() } : x);
+    const remoteDeleted = (remote.deletedIds || []).map(x => typeof x === 'string' ? { id: x, deletedAt: Date.now() } : x);
 
-      const remoteMap = new Map(remoteList.map(item => [item.id, item]));
-      const localMap = new Map(localList.map(item => [item.id, item]));
+    const mergedTombstonesMap = new Map();
+    for (const x of [...localDeleted, ...remoteDeleted]) {
+      const existing = mergedTombstonesMap.get(x.id);
+      if (!existing || x.deletedAt > existing.deletedAt) {
+        mergedTombstonesMap.set(x.id, x);
+      }
+    }
+    const mergedDeletedTombstones = Array.from(mergedTombstonesMap.values());
+    const activeDeletedIds = mergedDeletedTombstones.map(x => x.id);
+
+    function mergeObjectLists(localList, remoteList) {
+      const cleanLocal = (localList || []).filter(item => !activeDeletedIds.includes(item.id));
+      const cleanRemote = (remoteList || []).filter(item => !activeDeletedIds.includes(item.id));
+
+      const remoteMap = new Map(cleanRemote.map(item => [item.id, item]));
+      const localMap = new Map(cleanLocal.map(item => [item.id, item]));
       const mergedList = [];
 
-      for (const localItem of localList) {
+      for (const localItem of cleanLocal) {
         const remoteItem = remoteMap.get(localItem.id);
         if (remoteItem) {
           mergedList.push(Object.assign({}, remoteItem, localItem));
@@ -93,7 +190,7 @@
         }
       }
 
-      for (const remoteItem of remoteList) {
+      for (const remoteItem of cleanRemote) {
         if (!localMap.has(remoteItem.id)) {
           mergedList.push(remoteItem);
         }
@@ -103,11 +200,22 @@
     }
 
     function mergeStringArrays(localArr, remoteArr) {
-      if (!Array.isArray(localArr)) return remoteArr || [];
-      if (!Array.isArray(remoteArr)) return localArr || [];
-      const set = new Set([...remoteArr, ...localArr]);
+      const cleanLocal = (localArr || []).filter(item => !activeDeletedIds.includes(item));
+      const cleanRemote = (remoteArr || []).filter(item => !activeDeletedIds.includes(item));
+      const set = new Set([...cleanRemote, ...cleanLocal]);
       return Array.from(set);
     }
+
+    // Merge activityLog (deduplicate by timestamp + action text, sort by timestamp desc, limit to 100)
+    const combinedLog = [...(local.activityLog || []), ...(remote.activityLog || [])];
+    const logMap = new Map();
+    for (const log of combinedLog) {
+      const key = `${log.timestamp}_${log.action}`;
+      logMap.set(key, log);
+    }
+    const mergedActivityLog = Array.from(logMap.values())
+      .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
+      .slice(0, 100);
 
     const merged = {};
     merged.programs = mergeObjectLists(local.programs, remote.programs);
@@ -117,11 +225,62 @@
     merged.teamMembers = mergeObjectLists(local.teamMembers, remote.teamMembers);
     merged.testTypes = mergeStringArrays(local.testTypes, remote.testTypes);
     merged.componentCodes = mergeStringArrays(local.componentCodes, remote.componentCodes);
+    merged.deletedIds = mergedDeletedTombstones;
+    merged.activityLog = mergedActivityLog;
 
     return merged;
   }
 
   // --- Shared Database Sync Functions ---
+  function startAutoPolling() {
+    stopAutoPolling();
+    autoPollInterval = setInterval(async () => {
+      if (!sharedFileHandle || isSyncing || isOffline) return;
+      try {
+        const file = await sharedFileHandle.getFile();
+        if (file.lastModified !== lastSharedFileModifiedTime) {
+          console.log("Shared file modified remotely, pulling updates...");
+          await pullSharedDatabase();
+        }
+      } catch (err) {
+        console.warn("Auto-polling file check failed:", err);
+      }
+    }, 15000);
+  }
+
+  function stopAutoPolling() {
+    if (autoPollInterval) {
+      clearInterval(autoPollInterval);
+      autoPollInterval = null;
+    }
+  }
+
+  function handleOfflineState() {
+    isOffline = true;
+    updateSyncStatus('error', 'Sync Error (Offline - Changes queued)');
+    
+    if (offlineRetryTimeout) clearTimeout(offlineRetryTimeout);
+    offlineRetryTimeout = setTimeout(async () => {
+      console.log("Retrying database push...");
+      try {
+        const success = await pushSharedDatabase();
+        if (success) {
+          console.log("Database push succeeded, offline state cleared.");
+          isOffline = false;
+          if (offlineRetryTimeout) {
+            clearTimeout(offlineRetryTimeout);
+            offlineRetryTimeout = null;
+          }
+        } else {
+          console.log("Database push queued or skipped, waiting for queued push to run.");
+        }
+      } catch (e) {
+        console.warn("Retry failed, still offline:", e);
+        handleOfflineState();
+      }
+    }, 10000);
+  }
+
   async function initSharedDatabase() {
     try {
       const handle = await getStoredFileHandle();
@@ -130,11 +289,13 @@
         const perm = await handle.queryPermission({ mode: 'readwrite' });
         if (perm === 'granted') {
           updateSyncStatus('connected', `Connected: ${handle.name}`);
+          const file = await handle.getFile();
+          lastSharedFileModifiedTime = file.lastModified;
           await pullSharedDatabase();
+          startAutoPolling();
         } else {
           updateSyncStatus('disconnected', 'Authorization Required');
-          const banner = document.getElementById('shared-reconnect-banner');
-          if (banner) banner.style.display = 'flex';
+          openModal('reconnect-modal');
         }
       }
     } catch (err) {
@@ -164,9 +325,13 @@
 
       sharedFileHandle = handle;
       await storeFileHandle(handle);
+      
+      const file = await handle.getFile();
+      lastSharedFileModifiedTime = file.lastModified;
 
       updateSyncStatus('syncing', 'Connecting...');
       await pullSharedDatabase();
+      startAutoPolling();
 
       closeModal('settings-modal');
       alert(`Successfully connected to shared database: ${handle.name}`);
@@ -190,8 +355,7 @@
 
     if (!sharedFileHandle) {
       alert("No shared database file handle found. Please connect via settings.");
-      const banner = document.getElementById('shared-reconnect-banner');
-      if (banner) banner.style.display = 'none';
+      closeModal('reconnect-modal');
       return;
     }
 
@@ -199,9 +363,11 @@
       const perm = await sharedFileHandle.requestPermission({ mode: 'readwrite' });
       if (perm === 'granted') {
         updateSyncStatus('connected', `Connected: ${sharedFileHandle.name}`);
-        const banner = document.getElementById('shared-reconnect-banner');
-        if (banner) banner.style.display = 'none';
+        closeModal('reconnect-modal');
+        const file = await sharedFileHandle.getFile();
+        lastSharedFileModifiedTime = file.lastModified;
         await pullSharedDatabase();
+        startAutoPolling();
       } else {
         alert("Permission denied. Could not reconnect.");
       }
@@ -216,9 +382,14 @@
     if (confirm("Disconnect from the shared database? You will revert to using browser local storage.")) {
       try {
         sharedFileHandle = null;
+        stopAutoPolling();
+        if (offlineRetryTimeout) {
+          clearTimeout(offlineRetryTimeout);
+          offlineRetryTimeout = null;
+        }
+        isOffline = false;
         await removeStoredFileHandle();
-        const banner = document.getElementById('shared-reconnect-banner');
-        if (banner) banner.style.display = 'none';
+        closeModal('reconnect-modal');
         updateSyncStatus('disconnected', 'Disconnected');
       } catch (err) {
         console.error("Error disconnecting shared database:", err);
@@ -226,88 +397,150 @@
     }
   }
 
+  async function syncWithSharedFile(isSavingMode) {
+    let attempts = 0;
+    const maxAttempts = 3;
+
+    while (attempts < maxAttempts) {
+      attempts++;
+      try {
+        // 1. Get the file handle and read the metadata (lastModified)
+        const file = await sharedFileHandle.getFile();
+        const readModifiedTime = file.lastModified;
+
+        // 2. Read file text
+        const text = await file.text();
+        let remoteState = null;
+        if (text.trim()) {
+          try {
+            remoteState = JSON.parse(text);
+          } catch (e) {
+            console.warn("Shared file is not valid JSON:", e);
+          }
+        }
+
+        // 3. Keep a copy of the state before merge to see if it changed
+        const stateBeforeMergeString = JSON.stringify(state);
+
+        // 4. Merge remote state into local state
+        pruneTombstones();
+        if (remoteState) {
+          state = mergeStates(state, remoteState);
+        }
+        // Save the merged state to local storage
+        state = window.ReqData.saveState(state);
+
+        const stateAfterMergeString = JSON.stringify(state);
+        const stateModified = (stateBeforeMergeString !== stateAfterMergeString);
+
+        // 5. Optimistic Concurrency Check (Double-Check before writing)
+        const freshFile = await sharedFileHandle.getFile();
+        if (freshFile.lastModified !== readModifiedTime) {
+          console.log(`OCC conflict detected (file modified since read: ${freshFile.lastModified} !== ${readModifiedTime}). Retrying...`);
+          if (attempts < maxAttempts) {
+            const delay = Math.random() * 1500 + 500; // 500ms to 2000ms delay
+            await new Promise(resolve => setTimeout(resolve, delay));
+            continue;
+          } else {
+            throw new Error("Concurrency conflict: file modified by another user during sync and max retries reached.");
+          }
+        }
+
+        // 6. Write the merged state (this locks the file)
+        const writable = await sharedFileHandle.createWritable();
+        await writable.write(JSON.stringify(state, null, 2));
+        await writable.close();
+
+        // 7. Success! Save the final modified time
+        const finalFile = await sharedFileHandle.getFile();
+        lastSharedFileModifiedTime = finalFile.lastModified;
+        isOffline = false;
+        updateSyncStatus('connected', `Connected: ${sharedFileHandle.name}`);
+
+        // On pull (isSavingMode = false), always render.
+        // On push (isSavingMode = true), only render if state actually changed during merge.
+        if (!isSavingMode || stateModified) {
+          render();
+        }
+
+        return; // Success, exit retry loop
+      } catch (err) {
+        console.warn(`Sync attempt ${attempts} failed:`, err);
+
+        // Check for permission errors - propagate immediately
+        if (err.name === 'NotAllowedError' || err.name === 'SecurityError') {
+          updateSyncStatus('disconnected', 'Authorization Required');
+          stopAutoPolling();
+          openModal('reconnect-modal');
+          throw err;
+        }
+
+        if (attempts >= maxAttempts) {
+          handleOfflineState();
+          throw err;
+        }
+
+        const delay = Math.random() * 1500 + 500;
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+  }
+
   async function pullSharedDatabase() {
-    if (!sharedFileHandle) return;
-    if (isSyncing) return;
+    if (!sharedFileHandle) return false;
+    if (isSyncing) {
+      throw new Error("Sync already in progress");
+    }
 
     isSyncing = true;
     updateSyncStatus('syncing', 'Syncing...');
 
     try {
-      const file = await sharedFileHandle.getFile();
-      const text = await file.text();
-      let remoteState = null;
-      if (text.trim()) {
-        try {
-          remoteState = JSON.parse(text);
-        } catch (e) {
-          console.warn("Shared file is not valid JSON, using local state as primary:", e);
-        }
-      }
-
-      if (remoteState) {
-        state = mergeStates(state, remoteState);
-        state = window.ReqData.saveState(state);
-      }
-
-      await pushSharedDatabaseInternal();
-      updateSyncStatus('connected', `Connected: ${sharedFileHandle.name}`);
-      render();
+      await syncWithSharedFile(false);
+      return true;
     } catch (err) {
       console.error("Error pulling from shared database:", err);
-      updateSyncStatus('error', 'Sync Error');
-      if (err.name === 'NotAllowedError' || err.name === 'SecurityError') {
-        const banner = document.getElementById('shared-reconnect-banner');
-        if (banner) banner.style.display = 'flex';
-      }
+      throw err;
     } finally {
       isSyncing = false;
+      if (pushPending) {
+        pushPending = false;
+        setTimeout(() => {
+          pushSharedDatabase().catch(err => {
+            console.error("Queued push failed:", err);
+          });
+        }, 100);
+      }
     }
   }
 
-  async function pushSharedDatabaseInternal() {
-    if (!sharedFileHandle) return;
-    const writable = await sharedFileHandle.createWritable();
-    await writable.write(JSON.stringify(state, null, 2));
-    await writable.close();
-  }
-
   async function pushSharedDatabase() {
-    if (!sharedFileHandle) return;
-    if (isSyncing) return;
+    if (!sharedFileHandle) return false;
+    if (isSyncing) {
+      pushPending = true;
+      console.log("Sync in progress, queueing next push.");
+      return false;
+    }
 
     isSyncing = true;
     updateSyncStatus('syncing', 'Saving...');
 
     try {
-      const file = await sharedFileHandle.getFile();
-      const text = await file.text();
-      let remoteState = null;
-      if (text.trim()) {
-        try {
-          remoteState = JSON.parse(text);
-        } catch (e) {
-          console.warn("Shared file JSON parsing failed during push merge:", e);
-        }
-      }
-
-      if (remoteState) {
-        state = mergeStates(state, remoteState);
-        state = window.ReqData.saveState(state);
-      }
-
-      await pushSharedDatabaseInternal();
-      updateSyncStatus('connected', `Connected: ${sharedFileHandle.name}`);
+      await syncWithSharedFile(true);
+      return true;
     } catch (err) {
       console.error("Error pushing to shared database:", err);
-      updateSyncStatus('error', 'Save Failed');
-      if (err.name === 'NotAllowedError' || err.name === 'SecurityError') {
-        const banner = document.getElementById('shared-reconnect-banner');
-        if (banner) banner.style.display = 'flex';
-      }
       throw err;
     } finally {
       isSyncing = false;
+      if (pushPending) {
+        pushPending = false;
+        setTimeout(() => {
+          pushSharedDatabase().catch(err => {
+            console.error("Queued push failed:", err);
+          });
+        }, 100);
+      }
     }
   }
 
@@ -359,7 +592,12 @@
       const pullBtn = section.querySelector('#btn-pull-shared-db');
       if (pullBtn) {
         pullBtn.addEventListener('click', () => {
-          pullSharedDatabase().then(() => alert('Successfully pulled and merged latest updates.'));
+          pullSharedDatabase()
+            .then(() => alert('Successfully pulled and merged latest updates.'))
+            .catch(err => {
+              console.error(err);
+              alert('Failed to pull updates: ' + err.message);
+            });
         });
       }
       const disconnectBtn = section.querySelector('#btn-disconnect-shared-db');
@@ -867,6 +1105,8 @@
     const type = input.value.trim();
     if (type && !state.testTypes.includes(type)) {
       state.testTypes.push(type);
+      untrackDeletion(type);
+      logActivity(`Added test type "${type}"`);
       input.value = '';
       syncAndRefresh();
       renderTestTypesList();
@@ -877,6 +1117,8 @@
   function deleteTestType(type) {
     if (confirm(`Are you sure you want to remove test type "${type}"? tests using this type will remain but dropdowns will not include it.`)) {
       state.testTypes = state.testTypes.filter(t => t !== type);
+      trackDeletion(type);
+      logActivity(`Deleted test type "${type}"`);
       syncAndRefresh();
       renderTestTypesList();
     }
@@ -902,6 +1144,8 @@
     const code = input.value.trim().toUpperCase();
     if (code && !state.componentCodes.includes(code)) {
       state.componentCodes.push(code);
+      untrackDeletion(code);
+      logActivity(`Added component code "${code}"`);
       input.value = '';
       syncAndRefresh();
       renderComponentCodesList();
@@ -912,6 +1156,8 @@
   function deleteComponentCode(code) {
     if (confirm(`Are you sure you want to remove component code "${code}"? Requirements using this component code will keep it, but it will not appear in select dropdowns.`)) {
       state.componentCodes = state.componentCodes.filter(c => c !== code);
+      trackDeletion(code);
+      logActivity(`Deleted component code "${code}"`);
       syncAndRefresh();
       renderComponentCodesList();
     }
@@ -951,6 +1197,8 @@
       const initials = getInitials(name);
       const newId = `TM-${Math.random().toString(36).substr(2, 5).toUpperCase()}`;
       state.teamMembers.push({ id: newId, name, initials, color });
+      untrackDeletion(newId);
+      logActivity(`Added team member "${name}"`);
       nameInput.value = '';
       colorInput.value = '#4F46E5';
       syncAndRefresh();
@@ -969,6 +1217,8 @@
           t.assigneeId = null;
         }
       });
+      trackDeletion(id);
+      logActivity(`Deleted team member "${tm.name}"`);
       syncAndRefresh();
       renderTeamList();
     }
@@ -1128,11 +1378,15 @@
         return;
       }
       state.programs.push({ id: newId, name, description });
+      untrackDeletion(newId);
+      logActivity(`Created program "${newId}"`);
       selectedProgramId = newId; // select newly created program
     } else {
       const idx = state.programs.findIndex(p => p.id === editId);
       if (idx !== -1) {
         state.programs[idx] = { id: editId, name, description };
+        untrackDeletion(editId);
+        logActivity(`Updated program "${editId}"`);
       }
     }
 
@@ -1146,6 +1400,8 @@
       if (selectedProgramId === id) {
         selectedProgramId = state.programs.length > 0 ? state.programs[0].id : null;
       }
+      trackDeletion(id);
+      logActivity(`Deleted program "${id}"`);
       syncAndRefresh();
     }
   }
@@ -1176,6 +1432,8 @@
         status: 'Not Started',
         notes
       });
+      untrackDeletion(newId);
+      logActivity(`Created requirement "${newId}"`);
     } else {
       const idx = state.requirements.findIndex(r => r.id === editId);
       if (idx !== -1) {
@@ -1185,6 +1443,8 @@
         state.requirements[idx].component = component;
         state.requirements[idx].description = description;
         state.requirements[idx].notes = notes;
+        untrackDeletion(editId);
+        logActivity(`Updated requirement "${editId}"`);
       }
     }
 
@@ -1200,6 +1460,8 @@
         }
       });
       state.requirements = state.requirements.filter(r => r.id !== id);
+      trackDeletion(id);
+      logActivity(`Deleted requirement "${id}"`);
       syncAndRefresh();
     }
   }
@@ -1221,10 +1483,14 @@
         return;
       }
       state.capabilities.push({ id: newId, description, status: 'Not Started' });
+      untrackDeletion(newId);
+      logActivity(`Created capability "${newId}"`);
     } else {
       const idx = state.capabilities.findIndex(c => c.id === editId);
       if (idx !== -1) {
         state.capabilities[idx] = { id: editId, description, status: state.capabilities[idx].status };
+        untrackDeletion(editId);
+        logActivity(`Updated capability "${editId}"`);
       }
     }
 
@@ -1241,6 +1507,8 @@
         }
       });
       state.capabilities = state.capabilities.filter(c => c.id !== id);
+      trackDeletion(id);
+      logActivity(`Deleted capability "${id}"`);
       syncAndRefresh();
     }
   }
@@ -1294,6 +1562,8 @@
         estimate,
         passedDate: null
       });
+      untrackDeletion(newId);
+      logActivity(`Created test "${name || newId}"`);
     } else {
       const idx = state.tests.findIndex(t => t.id === editId);
       if (idx !== -1) {
@@ -1314,6 +1584,8 @@
           estimate,
           passedDate: existingTest.passedDate
         };
+        untrackDeletion(editId);
+        logActivity(`Updated test "${name || editId}"`);
       }
     }
 
@@ -1322,8 +1594,11 @@
   }
 
   function deleteTest(id) {
+    const test = state.tests.find(t => t.id === id);
     if (confirm(`Are you sure you want to delete test "${id}"?`)) {
       state.tests = state.tests.filter(t => t.id !== id);
+      trackDeletion(id);
+      logActivity(`Deleted test "${(test && test.name) || id}"`);
       syncAndRefresh();
     }
   }
@@ -1332,13 +1607,16 @@
   function toggleTestOutcome(testId, nextStatus) {
     const idx = state.tests.findIndex(t => t.id === testId);
     if (idx !== -1) {
-      state.tests[idx].status = nextStatus;
+      const test = state.tests[idx];
+      test.status = nextStatus;
+      logActivity(`Updated test "${test.name}" status to "${nextStatus}"`);
       syncAndRefresh();
     }
   }
 
   // Sync state back to local storage and redraw current view
   function syncAndRefresh() {
+    pruneTombstones();
     state = window.ReqData.saveState(state);
     if (sharedFileHandle) {
       pushSharedDatabase().catch(err => {
@@ -1848,6 +2126,7 @@
         }).join('');
       }
     }
+    renderActivityLog();
   }
 
   // RENDER: PLANNING DESK VIEW
@@ -3862,6 +4141,8 @@
 
         if (!id) return; // Skip empty rows
 
+        untrackDeletion(id);
+
         const existingIdx = state.capabilities.findIndex(c => c.id === id);
         if (existingIdx !== -1) {
           state.capabilities[existingIdx].description = desc;
@@ -3876,6 +4157,7 @@
         }
       });
 
+      logActivity(`Imported ${importCount} capabilities (updated ${updateCount})`);
       syncAndRefresh();
       closeModal('import-capabilities-modal');
       alert(`Import completed!\n- Added: ${importCount} new capabilities\n- Updated: ${updateCount} existing capabilities`);
@@ -3900,6 +4182,8 @@
         let capId = (capIdx !== '-1' && row[capIdx] !== undefined) ? String(row[capIdx]).trim() : null;
 
         if (!id) return; // Skip empty rows
+
+        untrackDeletion(id);
 
         // Check if capability exists
         if (capId) {
@@ -3932,6 +4216,7 @@
         }
       });
 
+      logActivity(`Imported ${importCount} requirements for program "${programId}" (updated ${updateCount})`);
       syncAndRefresh();
       closeModal('import-requirements-modal');
 

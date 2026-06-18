@@ -99,7 +99,9 @@
       { id: 'TM-3', name: 'Alyx Vance', initials: 'AV', color: '#7C3AED' },
       { id: 'TM-4', name: 'Mae Jemison', initials: 'MJ', color: '#EA580C' },
       { id: 'TM-5', name: 'Wernher von Braun', initials: 'WV', color: '#059669' }
-    ]
+    ],
+    deletedIds: [],
+    activityLog: []
   };
 
   // Rollup statuses for subtasks
@@ -274,6 +276,23 @@
           // Ensure teamMembers exists in older saves
           if (!state.teamMembers) {
             state.teamMembers = JSON.parse(JSON.stringify(defaultState.teamMembers));
+          }
+
+          // Ensure deletedIds exists in older saves and format them as objects
+          if (!state.deletedIds) {
+            state.deletedIds = [];
+          } else {
+            state.deletedIds = state.deletedIds.map(x => {
+              if (typeof x === 'string') {
+                return { id: x, deletedAt: Date.now() };
+              }
+              return x;
+            });
+          }
+
+          // Ensure activityLog exists in older saves
+          if (!state.activityLog) {
+            state.activityLog = [];
           }
 
           // Remove capability names if they still exist from older versions
