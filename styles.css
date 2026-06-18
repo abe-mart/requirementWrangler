@@ -1444,6 +1444,12 @@ body {
   outline: none;
 }
 
+.modal-tab-btn.active {
+  color: var(--accent-color);
+  border-bottom-color: var(--accent-color);
+  background-color: var(--accent-glow);
+}
+
 .modal-tab-btn:hover {
   color: var(--text-primary);
   background-color: rgba(0, 0, 0, 0.02);
