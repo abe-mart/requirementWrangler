@@ -2650,10 +2650,10 @@
 
       <div class="modal-tabs" style="margin-top: 15px; margin-bottom: 15px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; padding-bottom: 6px;">
         <div style="display: flex; gap: 8px;">
-          <button class="modal-tab-btn ${selectedProgramTab === 'overview' ? 'active' : ''}" onclick="ReqApp.switchProgramTab('overview')">
+          <button id="tab-btn-program-overview" class="modal-tab-btn ${selectedProgramTab === 'overview' ? 'active' : ''}" onclick="ReqApp.switchProgramTab('overview')">
             Overview & Matrix
           </button>
-          <button class="modal-tab-btn ${selectedProgramTab === 'planning' ? 'active' : ''}" onclick="ReqApp.switchProgramTab('planning')">
+          <button id="tab-btn-program-planning" class="modal-tab-btn ${selectedProgramTab === 'planning' ? 'active' : ''}" onclick="ReqApp.switchProgramTab('planning')">
             Planning Workbench
           </button>
         </div>
@@ -4460,10 +4460,10 @@
       target: ".kpi-grid"
     },
     {
-      title: "Planning Desk",
-      text: "Use the Planning Desk to identify verification gaps and test backlogs. You can edit estimates and assign tests directly from this panel.",
-      view: "planning",
-      target: "#nav-planning"
+      title: "Planning Workbench",
+      text: "Identify verification gaps and test backlogs directly inside the program view. Switch between the Overview Matrix and this workspace to coordinate effort.",
+      view: "programs",
+      target: "#tab-btn-program-planning"
     },
     {
       title: "Programs Matrix",
@@ -4525,6 +4525,13 @@
 
     if (step.view) {
       switchView(step.view);
+    }
+
+    // Auto-select corresponding tabs for tour steps
+    if (step.target === '#tab-btn-program-planning') {
+      switchProgramTab('planning');
+    } else if (step.view === 'programs') {
+      switchProgramTab('overview');
     }
 
     setTimeout(() => {
