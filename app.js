@@ -5,8 +5,9 @@
   // App state loaded from localStorage
   let state = window.ReqData.loadState();
   let currentView = 'dashboard';
-  let reqViewMode = localStorage.getItem('req_view_mode') || 'grid'; // 'grid' or 'list'
+  let reqViewMode = localStorage.getItem('req_view_mode') || 'list'; // 'grid' or 'list'
   let selectedProgramId = state.programs.length > 0 ? state.programs[0].id : null;
+  let selectedProgramTab = 'overview';
 
   // Traceability page states
   let traceabilityData = { caps: [], reqs: [], tests: [] };
@@ -297,11 +298,26 @@
           updateSyncStatus('disconnected', 'Authorization Required');
           openModal('reconnect-modal');
         }
+      } else {
+        if (localStorage.getItem('db_setup_prompt_shown') !== 'true') {
+          openModal('db-setup-prompt-modal');
+        }
       }
     } catch (err) {
       console.error("Failed to initialize shared database sync:", err);
       updateSyncStatus('error', 'Sync Init Error');
     }
+  }
+
+  async function connectSharedDatabaseFromPrompt() {
+    closeModal('db-setup-prompt-modal');
+    localStorage.setItem('db_setup_prompt_shown', 'true');
+    await connectSharedDatabase();
+  }
+
+  function skipDbSetupPrompt() {
+    closeModal('db-setup-prompt-modal');
+    localStorage.setItem('db_setup_prompt_shown', 'true');
   }
 
   async function connectSharedDatabase() {
@@ -608,7 +624,7 @@
       }
     } else {
       section.innerHTML = `
-        <button class="btn btn-secondary btn-sm" id="btn-connect-shared-db" style="display: inline-flex; align-items: center; gap: 6px;">
+        <button class="btn btn-primary btn-sm" id="btn-connect-shared-db" style="display: inline-flex; align-items: center; gap: 6px;">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 16v1a2 2 0 0 1-2 2H3a2 2 0 0 1-2 2V7a2 2 0 0 1 2-2h11a2 2 0 0 1 2 2v1"></path><path d="M18 8h6v8h-6z"></path><circle cx="12" cy="12" r="3"></circle></svg>
           <span>Connect Shared Database...</span>
         </button>
@@ -625,7 +641,6 @@
   // View headings mapping
   const viewTitles = {
     dashboard: 'Dashboard Overview',
-    planning: 'Planning Desk',
     programs: 'Programs',
     requirements: 'Requirements Compliance',
     capabilities: 'Shared Capability Matrix',
@@ -657,7 +672,7 @@
 
     // Update primary action button in header
     const actionBtn = document.getElementById('header-action-btn');
-    if (viewId === 'dashboard' || viewId === 'planning' || viewId === 'traceability') {
+    if (viewId === 'dashboard' || viewId === 'traceability') {
       actionBtn.style.display = 'none';
     } else {
       actionBtn.style.display = 'inline-flex';
@@ -682,6 +697,13 @@
 
   // Deep link drill routing utility
   function drillTo(viewId, query) {
+    if (viewId === 'planning') {
+      selectedProgramTab = 'planning';
+      switchView('programs');
+      selectProgram(query);
+      return;
+    }
+
     switchView(viewId);
     
     if (viewId === 'requirements') {
@@ -710,11 +732,6 @@
       renderTests();
     } else if (viewId === 'programs') {
       selectProgram(query);
-    } else if (viewId === 'planning') {
-      selectedProgramId = query;
-      const planningSelect = document.getElementById('planning-program-select');
-      if (planningSelect) planningSelect.value = query;
-      renderPlanning();
     }
   }
 
@@ -806,6 +823,18 @@
   function closeModal(modalId) {
     const backdrop = document.getElementById(modalId);
     if (backdrop) backdrop.style.display = 'none';
+  }
+
+  function switchProgramTab(tabId) {
+    selectedProgramTab = tabId;
+    renderPrograms();
+  }
+
+  function toggleProgramsSidebar() {
+    const container = document.querySelector('.program-split-container');
+    if (container) {
+      container.classList.toggle('collapsed-sidebar');
+    }
   }
 
   function switchModalTab(tabId) {
@@ -1092,7 +1121,7 @@
       list.innerHTML = state.testTypes.map(t => `
         <div class="test-type-tag">
           <span>${escapeHTML(t)}</span>
-          <button class="test-type-tag-remove" type="button" onclick="ReqApp.deleteTestType('${escapeHTML(t)}')">&times;</button>
+          <button class="test-type-tag-remove" type="button" data-type="${escapeHTML(t)}" onclick="ReqApp.deleteTestType(this.dataset.type)">&times;</button>
         </div>
       `).join('');
     }
@@ -1131,7 +1160,7 @@
       list.innerHTML = state.componentCodes.map(c => `
         <div class="test-type-tag">
           <span>${escapeHTML(c)}</span>
-          <button class="test-type-tag-remove" type="button" onclick="ReqApp.deleteComponentCode('${escapeHTML(c)}')">&times;</button>
+          <button class="test-type-tag-remove" type="button" data-code="${escapeHTML(c)}" onclick="ReqApp.deleteComponentCode(this.dataset.code)">&times;</button>
         </div>
       `).join('');
     }
@@ -1179,7 +1208,7 @@
         <div class="team-member-tag" style="display:inline-flex; align-items:center; gap:8px; padding:6px 12px; background:var(--bg-canvas); border:1px solid var(--border-color); border-radius:20px; font-size:13px; font-weight:500;">
           <span class="assignee-avatar-badge" style="background-color: ${tm.color}; margin-right: 0;" title="${escapeHTML(tm.name)}">${escapeHTML(tm.initials)}</span>
           <span style="font-weight: 500;">${escapeHTML(tm.name)}</span>
-          <button class="test-type-tag-remove" type="button" onclick="ReqApp.deleteTeamMember('${tm.id}')" style="background: none; border: none; font-size: 14px; font-weight: 700; cursor: pointer; line-height: 1; margin-left: 4px;">&times;</button>
+          <button class="test-type-tag-remove" type="button" data-member-id="${escapeHTML(tm.id)}" onclick="ReqApp.deleteTeamMember(this.dataset.memberId)" style="background: none; border: none; font-size: 14px; font-weight: 700; cursor: pointer; line-height: 1; margin-left: 4px;">&times;</button>
         </div>
       `).join('');
     }
@@ -1342,6 +1371,9 @@
       document.getElementById('requirement-id-input').disabled = false;
       document.getElementById('requirement-form').reset();
       document.getElementById('requirement-notes-input').value = '';
+      if (selectedProgramId) {
+        document.getElementById('requirement-program-select').value = selectedProgramId;
+      }
     } else if (modalId === 'capability-modal') {
       document.getElementById('capability-edit-id').value = '';
       document.getElementById('capability-id-input').disabled = false;
@@ -1373,6 +1405,10 @@
     const description = document.getElementById('program-desc-input').value.trim();
 
     if (!editId) {
+      if (!isValidId(newId)) {
+        alert("Program ID cannot contain quotes (', \"), backslashes, or control characters.");
+        return;
+      }
       if (state.programs.some(p => p.id === newId)) {
         alert("Program ID already exists!");
         return;
@@ -1418,6 +1454,10 @@
     const notes = document.getElementById('requirement-notes-input').value.trim();
 
     if (!editId) {
+      if (!isValidId(newId)) {
+        alert("Requirement ID cannot contain quotes (', \"), backslashes, or control characters.");
+        return;
+      }
       if (state.requirements.some(r => r.id === newId)) {
         alert("Requirement ID already exists!");
         return;
@@ -1478,6 +1518,10 @@
     const description = document.getElementById('capability-desc-input').value.trim();
 
     if (!editId) {
+      if (!isValidId(newId)) {
+        alert("Capability ID cannot contain quotes (', \"), backslashes, or control characters.");
+        return;
+      }
       if (state.capabilities.some(c => c.id === newId)) {
         alert("Capability ID already exists!");
         return;
@@ -1835,6 +1879,17 @@
     }
   }
 
+  // ID validation and sanitization helpers
+  function isValidId(id) {
+    if (!id || typeof id !== 'string') return false;
+    return !/[\'"\\\x00-\x1F]/.test(id);
+  }
+
+  function sanitizeId(id) {
+    if (!id || typeof id !== 'string') return '';
+    return id.replace(/[\'"\\\x00-\x1F]/g, '');
+  }
+
   // HTML escaping helper
   function escapeHTML(str) {
     if (!str) return '';
@@ -1918,8 +1973,6 @@
 
     if (currentView === 'dashboard') {
       renderDashboard();
-    } else if (currentView === 'planning') {
-      renderPlanning();
     } else if (currentView === 'programs') {
       renderPrograms();
     } else if (currentView === 'requirements') {
@@ -2095,11 +2148,11 @@
             alertsHtml = `
               <div style="display:flex; gap:6px; margin-top:6px; flex-wrap:wrap;">
                 ${unlinkedCount > 0 ? `
-                  <span onclick="event.stopPropagation(); ReqApp.drillTo('planning', '${prog.id}')" style="background-color:rgba(239, 68, 68, 0.08); color:#EF4444; border:1px solid rgba(239, 68, 68, 0.15); font-size:9px; font-weight:700; padding:1px 6px; border-radius:4px; display:inline-flex; align-items:center; gap:2px; cursor:pointer;" title="${unlinkedCount} requirements lack verification tests. Click to open Planning Desk.">
+                  <span data-program-id="${escapeHTML(prog.id)}" onclick="event.stopPropagation(); ReqApp.drillTo('planning', this.dataset.programId)" style="background-color:rgba(239, 68, 68, 0.08); color:#EF4444; border:1px solid rgba(239, 68, 68, 0.15); font-size:9px; font-weight:700; padding:1px 6px; border-radius:4px; display:inline-flex; align-items:center; gap:2px; cursor:pointer;" title="${unlinkedCount} requirements lack verification tests. Click to open Planning Desk.">
                     ⚠️ ${unlinkedCount} Untested
                   </span>` : ''}
                 ${unwrittenCount > 0 ? `
-                  <span onclick="event.stopPropagation(); ReqApp.drillTo('planning', '${prog.id}')" style="background-color:rgba(245, 158, 11, 0.08); color:#D97706; border:1px solid rgba(245, 158, 11, 0.15); font-size:9px; font-weight:700; padding:1px 6px; border-radius:4px; display:inline-flex; align-items:center; gap:2px; cursor:pointer;" title="${unwrittenCount} planned tests need to be written. Click to open Planning Desk.">
+                  <span data-program-id="${escapeHTML(prog.id)}" onclick="event.stopPropagation(); ReqApp.drillTo('planning', this.dataset.programId)" style="background-color:rgba(245, 158, 11, 0.08); color:#D97706; border:1px solid rgba(245, 158, 11, 0.15); font-size:9px; font-weight:700; padding:1px 6px; border-radius:4px; display:inline-flex; align-items:center; gap:2px; cursor:pointer;" title="${unwrittenCount} planned tests need to be written. Click to open Planning Desk.">
                     📋 ${unwrittenCount} Planned
                   </span>` : ''}
               </div>
@@ -2107,7 +2160,7 @@
           }
 
           return `
-            <div class="dash-prog-item drill-link" onclick="ReqApp.drillTo('programs', '${prog.id}')" style="cursor:pointer;" title="Click to drill down into program details">
+            <div class="dash-prog-item drill-link" data-program-id="${escapeHTML(prog.id)}" onclick="ReqApp.drillTo('programs', this.dataset.programId)" style="cursor:pointer;" title="Click to drill down into program details">
               <div class="dash-prog-info">
                 <h4>${escapeHTML(prog.name)}</h4>
                 <p>${escapeHTML(prog.description || 'No description')}</p>
@@ -2131,20 +2184,24 @@
 
   // RENDER: PLANNING DESK VIEW
   function renderPlanning() {
-    const programSelect = document.getElementById('planning-program-select');
-    if (!programSelect) return;
-    
-    // Sync the program selection
-    selectedProgramId = programSelect.value || (state.programs.length > 0 ? state.programs[0].id : null);
     if (!selectedProgramId) {
-      document.getElementById('planning-untested-list').innerHTML = '<div style="color:var(--text-secondary); font-size:13px; text-align:center; padding:24px;">No programs created yet.</div>';
-      document.getElementById('planning-pending-list').innerHTML = '<div style="color:var(--text-secondary); font-size:13px; text-align:center; padding:24px;">No programs created yet.</div>';
+      const untestedContainer = document.getElementById('planning-untested-list');
+      const pendingContainer = document.getElementById('planning-pending-list');
+      if (untestedContainer) untestedContainer.innerHTML = '<div style="color:var(--text-secondary); font-size:13px; text-align:center; padding:24px;">No programs created yet.</div>';
+      if (pendingContainer) pendingContainer.innerHTML = '<div style="color:var(--text-secondary); font-size:13px; text-align:center; padding:24px;">No programs created yet.</div>';
       return;
     }
 
-    const componentFilter = document.getElementById('planning-component-filter').value;
-    const qUntested = document.getElementById('search-planning-untested').value.toLowerCase();
-    const qPending = document.getElementById('search-planning-pending').value.toLowerCase();
+    const componentFilterEl = document.getElementById('planning-component-filter');
+    if (componentFilterEl && componentFilterEl.options.length <= 1) {
+      populateComponentFilters();
+    }
+    const componentFilter = componentFilterEl ? componentFilterEl.value : 'ALL';
+
+    const searchUntestedEl = document.getElementById('search-planning-untested');
+    const searchPendingEl = document.getElementById('search-planning-pending');
+    const qUntested = searchUntestedEl ? searchUntestedEl.value.toLowerCase() : '';
+    const qPending = searchPendingEl ? searchPendingEl.value.toLowerCase() : '';
 
     // 1. Requirements for selected program
     const progReqs = state.requirements.filter(r => r.programId === selectedProgramId);
@@ -2197,17 +2254,27 @@
     const totalTestsSum = progTests.reduce((sum, t) => sum + (t.estimate || 0), 0);
     const completedTestsSum = progTests.filter(t => t.status === 'Passed').reduce((sum, t) => sum + (t.estimate || 0), 0);
 
-    document.getElementById('planning-stat-coverage').innerText = `${coveragePct}%`;
-    document.getElementById('planning-stat-coverage-sub').innerText = `${testedReqsCount} / ${totalReqsCount} requirements covered`;
-    document.getElementById('planning-stat-gaps').innerText = untestedReqs.length;
-    document.getElementById('planning-stat-backlog').innerText = pendingTests.length;
-    document.getElementById('planning-stat-backlog-sub').innerText = `${pendingTests.length} tests (${formattedBacklogDays}d remaining)`;
+    const coverageEl = document.getElementById('planning-stat-coverage');
+    const coverageSubEl = document.getElementById('planning-stat-coverage-sub');
+    const gapsEl = document.getElementById('planning-stat-gaps');
+    const backlogEl = document.getElementById('planning-stat-backlog');
+    const backlogSubEl = document.getElementById('planning-stat-backlog-sub');
+    const totalTimeEl = document.getElementById('planning-stat-total-time');
+    const totalTimeSubEl = document.getElementById('planning-stat-total-time-sub');
+
+    if (coverageEl) coverageEl.innerText = `${coveragePct}%`;
+    if (coverageSubEl) coverageSubEl.innerText = `${testedReqsCount} / ${totalReqsCount} requirements covered`;
+    if (gapsEl) gapsEl.innerText = untestedReqs.length;
+    if (backlogEl) backlogEl.innerText = pendingTests.length;
+    if (backlogSubEl) backlogSubEl.innerText = `${pendingTests.length} tests (${formattedBacklogDays}d remaining)`;
     
-    document.getElementById('planning-stat-total-time').innerText = `${totalTestsSum.toFixed(1).replace(/\.0$/, '')}d`;
-    document.getElementById('planning-stat-total-time-sub').innerText = `${completedTestsSum.toFixed(1).replace(/\.0$/, '')}d completed / ${totalTestsSum.toFixed(1).replace(/\.0$/, '')}d total`;
+    if (totalTimeEl) totalTimeEl.innerText = `${totalTestsSum.toFixed(1).replace(/\.0$/, '')}d`;
+    if (totalTimeSubEl) totalTimeSubEl.innerText = `${completedTestsSum.toFixed(1).replace(/\.0$/, '')}d completed / ${totalTestsSum.toFixed(1).replace(/\.0$/, '')}d total`;
     
-    document.getElementById('planning-untested-count').innerText = untestedReqs.length;
-    document.getElementById('planning-pending-count').innerText = pendingTests.length;
+    const untestedCountEl = document.getElementById('planning-untested-count');
+    const pendingCountEl = document.getElementById('planning-pending-count');
+    if (untestedCountEl) untestedCountEl.innerText = untestedReqs.length;
+    if (pendingCountEl) pendingCountEl.innerText = pendingTests.length;
 
     // Render Untested Requirements Cards
     const untestedContainer = document.getElementById('planning-untested-list');
@@ -2223,7 +2290,7 @@
             </div>
             <p class="backlog-card-desc">${escapeHTML(r.description)}</p>
             <div class="backlog-card-footer" style="justify-content: flex-end;">
-              <button class="btn btn-primary btn-sm" onclick="ReqApp.createTestForReq('${r.programId}', '${r.id}')" style="font-size:11px; font-weight:700; padding: 4px 10px;">
+              <button class="btn btn-primary btn-sm" data-program-id="${escapeHTML(r.programId)}" data-req-id="${escapeHTML(r.id)}" onclick="ReqApp.createTestForReq(this.dataset.programId, this.dataset.reqId)" style="font-size:11px; font-weight:700; padding: 4px 10px;">
                 + Create Test
               </button>
             </div>
@@ -2243,7 +2310,7 @@
             const req = state.requirements.find(r => r.id === reqId);
             const compText = req ? ` [${req.component}]` : '';
             return `
-              <span class="badge badge-pending drill-link" onclick="ReqApp.drillTo('requirements', '${reqId}')" style="font-size: 9px; margin-right:2px;" title="View requirement: ${escapeHTML(reqId)}">
+              <span class="badge badge-pending drill-link" data-req-id="${escapeHTML(reqId)}" onclick="ReqApp.drillTo('requirements', this.dataset.reqId)" style="font-size: 9px; margin-right:2px;" title="View requirement: ${escapeHTML(reqId)}">
                 ${escapeHTML(reqId)}${compText}
               </span>
             `;
@@ -2252,7 +2319,7 @@
           return `
             <div class="backlog-card">
               <div class="backlog-card-header">
-                <div class="backlog-card-title drill-link" onclick="ReqApp.drillTo('tests', '${escapeHTML(t.id)}')" title="View test detail">${escapeHTML(t.name)}</div>
+                <div class="backlog-card-title drill-link" data-test-id="${escapeHTML(t.id)}" onclick="ReqApp.drillTo('tests', this.dataset.testId)" title="View test detail">${escapeHTML(t.name)}</div>
                 <div style="display: flex; gap: 4px; align-items: center;">
                   <span class="badge" style="background-color: var(--border-color); color: var(--text-primary); font-size: 9px; padding: 2px 6px; font-weight:700;">${escapeHTML(t.type)}</span>
                   <span class="badge" style="background-color: var(--border-color); color: var(--text-secondary); font-size: 9px; padding: 2px 6px; font-weight:700; border-radius: 4px;">${escapeHTML(t.component || 'SE')}</span>
@@ -2283,7 +2350,7 @@
                       return `<span class="badge ${badgeClass}" style="font-size: 11px; padding: 2px 6px; font-weight: 700; cursor: help;" title="Derived from subtasks: ${escapeHTML(subList)}. Click Edit to change.">${t.status}</span>`;
                     } else {
                       return `
-                        <select class="select-filter btn-sm ${t.status === 'Passed' ? 'select-status-passed' : t.status === 'In Progress' ? 'select-status-inprogress' : 'select-status-notstarted'}" style="font-size:11px; padding:2px 8px;" onchange="ReqApp.toggleTestOutcome('${t.id}', this.value)">
+                        <select class="select-filter btn-sm ${t.status === 'Passed' ? 'select-status-passed' : t.status === 'In Progress' ? 'select-status-inprogress' : 'select-status-notstarted'}" style="font-size:11px; padding:2px 8px;" data-test-id="${escapeHTML(t.id)}" onchange="ReqApp.toggleTestOutcome(this.dataset.testId, this.value)">
                           <option value="Not Started" ${t.status === 'Not Started' ? 'selected' : ''}>Not Started</option>
                           <option value="In Progress" ${t.status === 'In Progress' ? 'selected' : ''}>In Progress</option>
                           <option value="Passed" ${t.status === 'Passed' ? 'selected' : ''}>Passed</option>
@@ -2296,10 +2363,10 @@
                   ${(() => {
                     const assignee = t.assigneeId ? state.teamMembers.find(tm => tm.id === t.assigneeId) : null;
                     return assignee
-                      ? `<span class="assignee-avatar-badge" style="background-color: ${assignee.color};" onclick="ReqApp.openModal('test-modal', '${t.id}')" title="Assigned to ${escapeHTML(assignee.name)}. Click to change.">${escapeHTML(assignee.initials)}</span>`
-                      : `<span class="assignee-avatar-badge unassigned" onclick="ReqApp.openModal('test-modal', '${t.id}')" title="Unassigned. Click to assign.">&#128100;</span>`;
+                      ? `<span class="assignee-avatar-badge" style="background-color: ${assignee.color};" data-test-id="${escapeHTML(t.id)}" onclick="ReqApp.openModal('test-modal', this.dataset.testId)" title="Assigned to ${escapeHTML(assignee.name)}. Click to change.">${escapeHTML(assignee.initials)}</span>`
+                      : `<span class="assignee-avatar-badge unassigned" data-test-id="${escapeHTML(t.id)}" onclick="ReqApp.openModal('test-modal', this.dataset.testId)" title="Unassigned. Click to assign.">&#128100;</span>`;
                   })()}
-                  <button class="btn btn-secondary btn-sm" onclick="ReqApp.openModal('test-modal', '${t.id}')" style="font-size:11px; font-weight:700; padding: 4px 10px;">
+                  <button class="btn btn-secondary btn-sm" data-test-id="${escapeHTML(t.id)}" onclick="ReqApp.openModal('test-modal', this.dataset.testId)" style="font-size:11px; font-weight:700; padding: 4px 10px;">
                     Edit
                   </button>
                 </div>
@@ -2350,11 +2417,11 @@
         alertsHtml = `
           <div style="display:flex; gap:6px; margin-top:6px; flex-wrap:wrap;">
             ${unlinkedCount > 0 ? `
-              <span onclick="event.stopPropagation(); ReqApp.drillTo('planning', '${p.id}')" style="background-color:rgba(239, 68, 68, 0.08); color:#EF4444; border:1px solid rgba(239, 68, 68, 0.15); font-size:9px; font-weight:700; padding:1px 6px; border-radius:4px; display:inline-flex; align-items:center; gap:2px; cursor:pointer;" title="${unlinkedCount} requirements lack verification tests. Click to open Planning Desk.">
+              <span data-program-id="${escapeHTML(p.id)}" onclick="event.stopPropagation(); ReqApp.drillTo('planning', this.dataset.programId)" style="background-color:rgba(239, 68, 68, 0.08); color:#EF4444; border:1px solid rgba(239, 68, 68, 0.15); font-size:9px; font-weight:700; padding:1px 6px; border-radius:4px; display:inline-flex; align-items:center; gap:2px; cursor:pointer;" title="${unlinkedCount} requirements lack verification tests. Click to open Planning Desk.">
                 ⚠️ ${unlinkedCount} Untested
               </span>` : ''}
             ${unwrittenCount > 0 ? `
-              <span onclick="event.stopPropagation(); ReqApp.drillTo('planning', '${p.id}')" style="background-color:rgba(245, 158, 11, 0.08); color:#D97706; border:1px solid rgba(245, 158, 11, 0.15); font-size:9px; font-weight:700; padding:1px 6px; border-radius:4px; display:inline-flex; align-items:center; gap:2px; cursor:pointer;" title="${unwrittenCount} planned tests need to be written. Click to open Planning Desk.">
+              <span data-program-id="${escapeHTML(p.id)}" onclick="event.stopPropagation(); ReqApp.drillTo('planning', this.dataset.programId)" style="background-color:rgba(245, 158, 11, 0.08); color:#D97706; border:1px solid rgba(245, 158, 11, 0.15); font-size:9px; font-weight:700; padding:1px 6px; border-radius:4px; display:inline-flex; align-items:center; gap:2px; cursor:pointer;" title="${unwrittenCount} planned tests need to be written. Click to open Planning Desk.">
                 📋 ${unwrittenCount} Planned
               </span>` : ''}
           </div>
@@ -2364,7 +2431,7 @@
       const isActive = p.id === selectedProgramId ? 'active' : '';
       
       return `
-        <button class="program-card-item ${isActive}" onclick="ReqApp.selectProgram('${p.id}')">
+        <button class="program-card-item ${isActive}" data-program-id="${escapeHTML(p.id)}" onclick="ReqApp.selectProgram(this.dataset.programId)">
           <div style="font-weight: 700; font-size: 14px; color: var(--text-primary);">${escapeHTML(p.name)}</div>
           <div style="font-size: 11px; color: var(--text-secondary);">${escapeHTML(p.id)}</div>
           <div class="mini-progress-bar-bg">
@@ -2388,32 +2455,23 @@
     const totalCount = progReqs.length;
     const pct = totalCount > 0 ? Math.round((passedCount / totalCount) * 100) : 0;
 
-    const unlinkedReqs = progReqs.filter(r => 
-      !state.tests.some(t => t.programId === r.programId && t.requirementIds && t.requirementIds.includes(r.id))
+    const hasTests = r => state.tests.some(t => 
+      t.programId === r.programId && 
+      t.requirementIds && 
+      t.requirementIds.includes(r.id)
     );
+    const testedReqsCount = progReqs.filter(r => hasTests(r)).length;
+    const coveragePct = totalCount > 0 ? Math.round((testedReqsCount / totalCount) * 100) : 0;
 
+    const unlinkedReqs = progReqs.filter(r => !hasTests(r));
     const unwrittenTests = state.tests.filter(t => t.programId === prog.id && t.status === 'Not Started');
 
-    const unlinkedReqsHtml = unlinkedReqs.length > 0
-      ? unlinkedReqs.map(r => `
-          <div style="display:flex; justify-content:space-between; align-items:center; background-color:var(--bg-canvas); padding: 6px 10px; border-radius:6px; border: 1px solid var(--border-color); font-size:12px;">
-            <span>
-              <strong class="drill-link" onclick="ReqApp.drillTo('requirements', '${r.id}')">${escapeHTML(r.id)}</strong>
-              <span class="badge" style="background-color: var(--border-color); color: var(--text-secondary); font-size: 9px; padding: 2px 4px; margin-left: 4px; font-weight: 700; border-radius: 4px;">${escapeHTML(r.component || 'SE')}</span>
-            </span>
-            <button class="btn btn-secondary btn-sm" onclick="ReqApp.createTestForReq('${prog.id}', '${r.id}')" style="font-size:10px; padding: 2px 6px; font-weight:700;">+ Add Test</button>
-          </div>
-        `).join('')
-      : '<div style="color:var(--text-secondary); font-size:12px; font-style:italic; padding:4px;">All program requirements have associated verification tests! (100% Coverage)</div>';
-
-    const unwrittenTestsHtml = unwrittenTests.length > 0
-      ? unwrittenTests.map(t => `
-          <div style="display:flex; justify-content:space-between; align-items:center; background-color:var(--bg-canvas); padding: 6px 10px; border-radius:6px; border: 1px solid var(--border-color); font-size:12px;">
-            <span class="drill-link" onclick="ReqApp.drillTo('tests', '${t.id}')" style="font-weight:600; max-width: 65%; text-overflow:ellipsis; overflow:hidden; white-space:nowrap;">${escapeHTML(t.name)}</span>
-            <button class="btn btn-secondary btn-sm" onclick="ReqApp.openModal('test-modal', '${t.id}')" style="font-size:10px; padding: 2px 6px; font-weight:700;">Write / Edit</button>
-          </div>
-        `).join('')
-      : '<div style="color:var(--text-secondary); font-size:12px; font-style:italic; padding:4px;">All verification tests for this program have been written and started/completed.</div>';
+    const progTests = state.tests.filter(t => t.programId === prog.id);
+    const pendingTests = progTests.filter(t => t.status !== 'Passed');
+    const totalTestsSum = progTests.reduce((sum, t) => sum + (t.estimate || 0), 0);
+    const completedTestsSum = progTests.filter(t => t.status === 'Passed').reduce((sum, t) => sum + (t.estimate || 0), 0);
+    const backlogDaysSum = pendingTests.reduce((sum, t) => sum + (t.estimate || 0), 0);
+    const formattedBacklogDays = backlogDaysSum.toFixed(1).replace(/\.0$/, '');
 
     // Group requirements by status
     const reqsTableRows = progReqs.length > 0 
@@ -2429,7 +2487,7 @@
           
           let testsLinks = '<em style="color:var(--status-failed);">Unlinked</em>';
           if (linkedTests.length > 0) {
-            testsLinks = linkedTests.map(t => `<span class="drill-link" onclick="ReqApp.drillTo('tests', '${escapeHTML(t.id)}')" title="View test: ${escapeHTML(t.name)}">${escapeHTML(t.name)}</span>`).join(', ');
+            testsLinks = linkedTests.map(t => `<span class="drill-link" data-test-id="${escapeHTML(t.id)}" onclick="ReqApp.drillTo('tests', this.dataset.testId)" title="View test: ${escapeHTML(t.name)}">${escapeHTML(t.name)}</span>`).join(', ');
           } else {
             const sources = getInheritedPassSource(r);
             if (sources && sources.length > 0) {
@@ -2439,9 +2497,9 @@
                   <div style="color: var(--text-secondary); font-size: 10px;">
                     ${sources.map(src => {
                       const testText = src.testName 
-                        ? `<span class="drill-link" onclick="ReqApp.drillTo('tests', '${escapeHTML(src.testId)}')" style="font-weight:600;">${escapeHTML(src.testName)}</span>`
+                        ? `<span class="drill-link" data-test-id="${escapeHTML(src.testId)}" onclick="ReqApp.drillTo('tests', this.dataset.testId)" style="font-weight:600;">${escapeHTML(src.testName)}</span>`
                         : `Req ${escapeHTML(src.requirementId)}`;
-                      const progText = `<span class="drill-link" onclick="ReqApp.drillTo('programs', '${escapeHTML(src.programId)}')" style="font-style: italic;">${escapeHTML(src.programName)}</span>`;
+                      const progText = `<span class="drill-link" data-program-id="${escapeHTML(src.programId)}" onclick="ReqApp.drillTo('programs', this.dataset.programId)" style="font-style: italic;">${escapeHTML(src.programName)}</span>`;
                       return `<div style="margin: 2px 0;">${testText}<br><span style="font-size:9px;">in ${progText}</span></div>`;
                     }).join('')}
                   </div>
@@ -2460,7 +2518,7 @@
           return `
             <tr>
               <td>
-                <span class="drill-link" onclick="ReqApp.drillTo('requirements', '${r.id}')" title="Drill into requirement detail">${escapeHTML(r.id)}</span>
+                <span class="drill-link" data-req-id="${escapeHTML(r.id)}" onclick="ReqApp.drillTo('requirements', this.dataset.reqId)" title="Drill into requirement detail">${escapeHTML(r.id)}</span>
                 <span class="badge" style="background-color: var(--border-color); color: var(--text-secondary); font-size: 9px; padding: 2px 4px; margin-left: 6px; font-weight: 700; border-radius: 4px;">${escapeHTML(r.component || 'SE')}</span>
               </td>
               <td>
@@ -2469,7 +2527,7 @@
                 </div>
               </td>
               <td>
-                ${cap ? `<span class="drill-link" onclick="ReqApp.drillTo('capabilities', '${cap.id}')">${escapeHTML(cap.id)}</span>` : '<span style="color:var(--text-secondary); font-size:12px;">None</span>'}
+                ${cap ? `<span class="drill-link" data-cap-id="${escapeHTML(cap.id)}" onclick="ReqApp.drillTo('capabilities', this.dataset.capId)">${escapeHTML(cap.id)}</span>` : '<span style="color:var(--text-secondary); font-size:12px;">None</span>'}
               </td>
               <td>
                 ${testsLinks}
@@ -2494,21 +2552,71 @@
           const badgeClass = c.status === 'Passed' ? 'badge-passed' : c.status === 'In Progress' ? 'badge-in-progress' : 'badge-not-started';
           return `
             <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 12px; background-color:var(--bg-canvas); border:1px solid var(--border-color); border-radius:8px; font-size:13px;">
-              <span class="drill-link" onclick="ReqApp.drillTo('capabilities', '${c.id}')">${escapeHTML(c.id)}</span>
+              <span class="drill-link" data-cap-id="${escapeHTML(c.id)}" onclick="ReqApp.drillTo('capabilities', this.dataset.capId)">${escapeHTML(c.id)}</span>
               <span class="badge ${badgeClass}">${c.status}</span>
             </div>
           `;
         }).join('')
       : '<p style="color:var(--text-secondary); font-size:13px;">No shared capabilities linked to this program.</p>';
 
-    detailPanel.innerHTML = `
-      <div style="display:flex; justify-content:space-between; align-items:flex-start; border-bottom: 1px solid var(--border-color); padding-bottom:16px;">
-        <div>
-          <h2 style="font-family:'Outfit', sans-serif; font-size:22px; font-weight:800;">${escapeHTML(prog.name)}</h2>
-          <span style="font-size:12px; color:var(--text-secondary); font-weight:600; text-transform:uppercase; letter-spacing:1px;">ID: ${escapeHTML(prog.id)}</span>
+    // Set scrolling behavior based on active tab
+    if (selectedProgramTab === 'planning') {
+      detailPanel.style.overflowY = 'hidden';
+    } else {
+      detailPanel.style.overflowY = 'auto';
+    }
+
+    const headerHtml = `
+      <div style="display:flex; justify-content:space-between; align-items:center; border-bottom: 1px solid var(--border-color); padding-bottom:16px; flex-shrink:0; gap:16px; flex-wrap:nowrap;">
+        <div style="display:flex; align-items:center; gap:16px; flex-wrap:wrap; flex-grow:1; min-width:0;">
+          <div style="display:flex; align-items:center; gap:12px; flex-shrink:0;">
+            <!-- Toggle Sidebar Button -->
+            <button class="btn btn-secondary btn-sm" onclick="ReqApp.toggleProgramsSidebar()" style="padding: 6px; display: inline-flex; align-items: center; justify-content: center; height: 32px; width: 32px; flex-shrink: 0;" title="Toggle Programs List Sidebar">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                <line x1="9" y1="3" x2="9" y2="21"></line>
+              </svg>
+            </button>
+            <div style="min-width:0; max-width:220px;">
+              <h2 style="font-family:'Outfit', sans-serif; font-size:22px; font-weight:800; margin:0; line-height:1.2; white-space:nowrap; text-overflow:ellipsis; overflow:hidden;" title="${escapeHTML(prog.name)}">${escapeHTML(prog.name)}</h2>
+              <span style="font-size:11px; color:var(--text-secondary); font-weight:600; text-transform:uppercase; letter-spacing:0.5px;">ID: ${escapeHTML(prog.id)}</span>
+            </div>
+          </div>
+          
+          <!-- Compact Metric Cards -->
+          <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+            <!-- 1. Requirements Coverage -->
+            <div class="header-metric-card ${coveragePct === 100 ? 'coverage-full' : 'coverage-partial'}" title="${testedReqsCount} / ${totalCount} requirements covered by tests">
+              <span class="card-label">Coverage:</span>
+              <span class="card-value">${coveragePct}%</span>
+              <span class="card-subtext">(${testedReqsCount}/${totalCount})</span>
+            </div>
+
+            <!-- 2. Verification Gaps -->
+            <div onclick="ReqApp.switchProgramTab('planning')" class="header-metric-card clickable-header-card ${unlinkedReqs.length > 0 ? 'gaps-warning' : 'no-gaps'}" title="${unlinkedReqs.length > 0 ? `${unlinkedReqs.length} requirements lack verification tests. Click to open Planning Workbench.` : 'All requirements covered!'}">
+              <span class="card-label">Gaps:</span>
+              <span class="card-value">${unlinkedReqs.length}</span>
+              <span class="card-subtext">${unlinkedReqs.length > 0 ? '(Triage)' : '(All covered)'}</span>
+            </div>
+
+            <!-- 3. Planned Backlog -->
+            <div onclick="ReqApp.switchProgramTab('planning')" class="header-metric-card clickable-header-card ${unwrittenTests.length > 0 ? 'backlog-warning' : 'no-gaps'}" title="${unwrittenTests.length > 0 ? `${unwrittenTests.length} tests in backlog. Click to open Planning Workbench.` : 'No backlog!'}">
+              <span class="card-label">Backlog:</span>
+              <span class="card-value">${unwrittenTests.length}</span>
+              <span class="card-subtext">${unwrittenTests.length > 0 ? '(Planned)' : '(All started)'}</span>
+            </div>
+
+            <!-- 4. Effort -->
+            <div class="header-metric-card effort-neutral" title="${completedTestsSum.toFixed(1).replace(/\.0$/, '')}d completed / ${totalTestsSum.toFixed(1).replace(/\.0$/, '')}d total estimated effort">
+              <span class="card-label">Effort:</span>
+              <span class="card-value">${totalTestsSum.toFixed(1).replace(/\.0$/, '')}d</span>
+              <span class="card-subtext">(${completedTestsSum.toFixed(1).replace(/\.0$/, '')}d done)</span>
+            </div>
+          </div>
         </div>
-        <div style="display:flex; gap:8px; flex-wrap:wrap;">
-          <button class="btn btn-primary btn-sm" onclick="ReqApp.printProgramReport('${prog.id}')" style="display:inline-flex; align-items:center; gap:6px;" title="Print Program Status Report to PDF">
+        
+        <div style="display:flex; gap:8px; align-items:center; flex-shrink:0;">
+          <button class="btn btn-primary btn-sm" data-program-id="${escapeHTML(prog.id)}" onclick="ReqApp.printProgramReport(this.dataset.programId)" style="display:inline-flex; align-items:center; gap:6px; height:32px; padding:0 12px;" title="Print Program Status Report to PDF">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <polyline points="6 9 6 2 18 2 18 9"></polyline>
               <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path>
@@ -2516,92 +2624,131 @@
             </svg>
             <span>Print Report</span>
           </button>
-          <button class="btn btn-secondary btn-sm" onclick="ReqApp.exportProgramMarkdown('${prog.id}')" style="display:inline-flex; align-items:center; gap:6px;" title="Export Verification Matrix to Markdown (.md)">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
-            <span>Export MD</span>
-          </button>
-          <button class="btn btn-secondary btn-sm" onclick="ReqApp.exportProgramCSV('${prog.id}')" style="display:inline-flex; align-items:center; gap:6px;" title="Export Requirements Matrix to CSV (.csv)">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="9" y1="3" x2="9" y2="21"></line><line x1="15" y1="3" x2="15" y2="21"></line><line x1="3" y1="9" x2="21" y2="9"></line><line x1="3" y1="15" x2="21" y2="15"></line></svg>
-            <span>Export CSV</span>
-          </button>
-          <button class="btn btn-secondary btn-sm" onclick="ReqApp.openModal('program-modal', '${prog.id}')">Edit</button>
-          <button class="btn btn-danger btn-sm" onclick="ReqApp.deleteProgram('${prog.id}')">Delete</button>
-        </div>
-      </div>
-
-      <div style="display:grid; grid-template-columns: 2fr 1fr; gap:24px; margin-top:10px;">
-        <div>
-          <h3 style="font-size:13px; font-weight:600; text-transform:uppercase; color:var(--text-secondary); margin-bottom:8px;">Description</h3>
-          <p style="font-size:14px; line-height:1.6; color:var(--text-primary);">${escapeHTML(prog.description || 'No description provided.')}</p>
-        </div>
-        <div style="background-color: var(--bg-canvas); border:1px solid var(--border-color); border-radius:12px; padding:16px; display:flex; flex-direction:column; justify-content:center; align-items:center;">
-          <span style="font-size:11px; text-transform:uppercase; font-weight:700; color:var(--text-secondary); margin-bottom:6px;">Overall Compliance</span>
-          <div style="font-size:32px; font-weight:800; font-family:'Outfit',sans-serif; color: ${pct === 100 ? 'var(--status-passed)' : 'var(--text-primary)'};">${pct}%</div>
-          <div style="font-size:12px; color:var(--text-secondary); margin-top:2px;">${passedCount} / ${totalCount} requirements satisfied</div>
-        </div>
-      </div>
-
-      <!-- Planning and Verification Gaps Analysis -->
-      <div style="margin-top:20px; margin-bottom:20px;">
-        <h3 style="font-size:13px; font-weight:700; text-transform:uppercase; color:var(--text-secondary); margin-bottom:10px;">Planning & Verification Gaps</h3>
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
-          <!-- Missing Test Coverage Column -->
-          <div style="background-color: rgba(239, 68, 68, 0.02); border: 1px dashed rgba(239, 68, 68, 0.25); border-radius: 10px; padding: 14px;">
-            <h4 style="font-size: 13px; font-weight: 700; color: #EF4444; display: flex; align-items: center; gap: 6px; margin-bottom: 8px;">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
-              <span>Requirements Missing Tests (${unlinkedReqs.length})</span>
-            </h4>
-            <div style="max-height: 120px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; padding-right:4px;">
-              ${unlinkedReqsHtml}
-            </div>
-          </div>
-
-          <!-- Unwritten Planned Tests Column -->
-          <div style="background-color: rgba(245, 158, 11, 0.02); border: 1px dashed rgba(245, 158, 11, 0.25); border-radius: 10px; padding: 14px;">
-            <h4 style="font-size: 13px; font-weight: 700; color: #D97706; display: flex; align-items: center; gap: 6px; margin-bottom: 8px;">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
-              <span>Planned Tests Not Started (${unwrittenTests.length})</span>
-            </h4>
-            <div style="max-height: 120px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; padding-right:4px;">
-              ${unwrittenTestsHtml}
+          
+          <div style="position:relative; display:inline-block;">
+            <button class="btn btn-secondary btn-sm" id="program-actions-btn" onclick="ReqApp.toggleProgramDropdown(event)" style="padding:0; width:32px; height:32px; display:inline-flex; align-items:center; justify-content:center; font-size:16px; font-weight:bold;" title="More Actions">
+              ⋯
+            </button>
+            <div id="program-actions-dropdown" class="dropdown-menu-floating" style="display:none; position:absolute; right:0; top:100%; margin-top:6px; z-index:1000; min-width:160px; border-radius:6px; padding:4px 0;">
+              <button class="dropdown-item-btn" onclick="ReqApp.exportProgramCSV('${escapeHTML(prog.id)}')">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="margin-right:8px;"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="9" y1="3" x2="9" y2="21"></line><line x1="15" y1="3" x2="15" y2="21"></line><line x1="3" y1="9" x2="21" y2="9"></line><line x1="3" y1="15" x2="21" y2="15"></line></svg>
+                Export CSV
+              </button>
+              <button class="dropdown-item-btn" onclick="ReqApp.openModal('program-modal', '${escapeHTML(prog.id)}')">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="margin-right:8px;"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                Edit Program
+              </button>
+              <div style="border-top: 1px solid var(--border-color); margin:4px 0;"></div>
+              <button class="dropdown-item-btn dropdown-item-danger" onclick="ReqApp.deleteProgram('${escapeHTML(prog.id)}')">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="margin-right:8px; stroke:currentColor;"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
+                Delete Program
+              </button>
             </div>
           </div>
         </div>
       </div>
 
-      <div style="margin-top:10px;">
-        <h3 style="font-size:13px; font-weight:700; text-transform:uppercase; color:var(--text-secondary); margin-bottom:12px; display:flex; justify-content:space-between; align-items:center;">
-          <span>Program Requirements</span>
-          <div style="display:flex; gap:8px;">
-            <button class="btn btn-secondary btn-sm" onclick="ReqApp.openImportRequirementsModal('${prog.id}')" style="font-size:11px; padding:4px 8px;">📂 Import</button>
-            <button class="btn btn-primary btn-sm" onclick="ReqApp.openModal('requirement-modal')" style="font-size:11px; padding:4px 8px;">+ Add Requirement</button>
+      <div class="modal-tabs" style="margin-top: 15px; margin-bottom: 15px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; padding-bottom: 6px;">
+        <div style="display: flex; gap: 8px;">
+          <button class="modal-tab-btn ${selectedProgramTab === 'overview' ? 'active' : ''}" onclick="ReqApp.switchProgramTab('overview')">
+            Overview & Matrix
+          </button>
+          <button class="modal-tab-btn ${selectedProgramTab === 'planning' ? 'active' : ''}" onclick="ReqApp.switchProgramTab('planning')">
+            Planning Workbench
+          </button>
+        </div>
+        ${selectedProgramTab === 'planning' ? `
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <label class="form-label" for="planning-component-filter" style="margin-bottom: 0; white-space: nowrap; font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--text-secondary); letter-spacing: 0.5px;">Filter Component:</label>
+            <select class="select-filter" id="planning-component-filter" onchange="ReqApp.renderPlanning()" style="padding: 4px 8px; font-size: 11px; height: 26px; min-width: 130px;">
+              <option value="ALL">All Components</option>
+            </select>
           </div>
-        </h3>
-        <div class="table-wrapper">
-          <table class="custom-table" style="font-size:13px;">
-            <thead>
-              <tr>
-                <th scope="col" style="width:100px;">Req ID</th>
-                <th scope="col">Statement</th>
-                <th scope="col">Shared Capability</th>
-                <th scope="col">Verification Test</th>
-                <th scope="col" style="width:110px;">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${reqsTableRows}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <div style="margin-top:10px;">
-        <h3 style="font-size:13px; font-weight:700; text-transform:uppercase; color:var(--text-secondary); margin-bottom:12px;">Associated Shared Capabilities</h3>
-        <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap:12px;">
-          ${capsSummaryHtml}
-        </div>
+        ` : ''}
       </div>
     `;
+
+    if (selectedProgramTab === 'overview') {
+      detailPanel.innerHTML = headerHtml + `
+        <div style="margin-top: 12px; margin-bottom: 16px;">
+          <h3 style="font-size:13px; font-weight:600; text-transform:uppercase; color:var(--text-secondary); margin-bottom:6px;">Description</h3>
+          <p style="font-size:14px; line-height:1.6; color:var(--text-primary); margin:0;">${escapeHTML(prog.description || 'No description provided.')}</p>
+        </div>
+
+        <div style="margin-top:10px;">
+          <h3 style="font-size:13px; font-weight:700; text-transform:uppercase; color:var(--text-secondary); margin-bottom:12px; display:flex; justify-content:space-between; align-items:center;">
+            <span>Program Requirements</span>
+            <div style="display:flex; gap:8px;">
+              <button class="btn btn-secondary btn-sm" data-program-id="${escapeHTML(prog.id)}" onclick="ReqApp.openImportRequirementsModal(this.dataset.programId)" style="font-size:11px; padding:4px 8px;">📂 Import</button>
+              <button class="btn btn-primary btn-sm" onclick="ReqApp.openModal('requirement-modal')" style="font-size:11px; padding:4px 8px;">+ Add Requirement</button>
+            </div>
+          </h3>
+          <div class="table-wrapper">
+            <table class="custom-table" style="font-size:13px;">
+              <thead>
+                <tr>
+                  <th scope="col" style="width:100px;">Req ID</th>
+                  <th scope="col">Statement</th>
+                  <th scope="col">Shared Capability</th>
+                  <th scope="col">Verification Test</th>
+                  <th scope="col" style="width:110px;">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${reqsTableRows}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div style="margin-top:10px;">
+          <h3 style="font-size:13px; font-weight:700; text-transform:uppercase; color:var(--text-secondary); margin-bottom:12px;">Associated Shared Capabilities</h3>
+          <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap:12px;">
+            ${capsSummaryHtml}
+          </div>
+        </div>
+      `;
+    } else if (selectedProgramTab === 'planning') {
+      detailPanel.innerHTML = headerHtml + `
+        <!-- Dual-Column Cockpit Layout -->
+        <div class="planning-split-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; flex-grow: 1; overflow: hidden; min-height: 0;">
+          <!-- Untested Requirements Column -->
+          <div class="backlog-column-wrapper" style="display: flex; flex-direction: column; gap: 12px; height: 100%; overflow: hidden;">
+            <div class="backlog-column-header" style="background-color: rgba(239, 68, 68, 0.03); border: 1px dashed rgba(239, 68, 68, 0.25); border-radius: 8px; padding: 10px 14px; display: flex; justify-content: space-between; align-items: center; flex-shrink: 0;">
+              <h3 style="font-size: 12px; font-weight: 700; color: #EF4444; display: flex; align-items: center; gap: 6px; margin: 0; text-transform: uppercase; letter-spacing: 0.5px;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+                <span>Untested Requirements (<span id="planning-untested-count">0</span>)</span>
+              </h3>
+            </div>
+            <div class="search-input-wrapper" style="flex: none; max-width: 100%; margin-bottom: 2px;">
+              <span class="search-icon" aria-hidden="true">&#128269;</span>
+              <input type="search" class="search-input" id="search-planning-untested" placeholder="Search untested requirements..." oninput="ReqApp.renderPlanning()" style="font-size:12px; padding: 6px 12px 6px 36px;">
+            </div>
+            <div id="planning-untested-list" style="display: flex; flex-direction: column; gap: 10px; flex-grow: 1; overflow-y: auto; padding-right: 4px; padding-bottom: 20px;">
+              <!-- Dynamically populated cards -->
+            </div>
+          </div>
+
+          <!-- Test Execution Backlog Column -->
+          <div class="backlog-column-wrapper" style="display: flex; flex-direction: column; gap: 12px; height: 100%; overflow: hidden;">
+            <div class="backlog-column-header" style="background-color: rgba(217, 119, 6, 0.03); border: 1px dashed rgba(217, 119, 6, 0.25); border-radius: 8px; padding: 10px 14px; display: flex; justify-content: space-between; align-items: center; flex-shrink: 0;">
+              <h3 style="font-size: 12px; font-weight: 700; color: #D97706; display: flex; align-items: center; gap: 6px; margin: 0; text-transform: uppercase; letter-spacing: 0.5px;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+                <span>Test Backlog (<span id="planning-pending-count">0</span>)</span>
+              </h3>
+            </div>
+            <div class="search-input-wrapper" style="flex: none; max-width: 100%; margin-bottom: 2px;">
+              <span class="search-icon" aria-hidden="true">&#128269;</span>
+              <input type="search" class="search-input" id="search-planning-pending" placeholder="Search test backlog..." oninput="ReqApp.renderPlanning()" style="font-size:12px; padding: 6px 12px 6px 36px;">
+            </div>
+            <div id="planning-pending-list" style="display: flex; flex-direction: column; gap: 10px; flex-grow: 1; overflow-y: auto; padding-right: 4px; padding-bottom: 20px;">
+              <!-- Dynamically populated cards -->
+            </div>
+          </div>
+        </div>
+      `;
+      renderPlanning();
+    }
   }
 
   // RENDER: REQUIREMENTS VIEW (GRID OR COMPACT Dense LIST)
@@ -2645,7 +2792,7 @@
         
         let testsLinks = '';
         if (linkedTests.length > 0) {
-          testsLinks = linkedTests.map(t => `<span class="drill-link" onclick="ReqApp.drillTo('tests', '${escapeHTML(t.id)}'); event.stopPropagation();" title="View test: ${escapeHTML(t.name)}">${escapeHTML(t.name)} (${t.status})</span>`).join(', ');
+          testsLinks = linkedTests.map(t => `<span class="drill-link" data-test-id="${escapeHTML(t.id)}" onclick="ReqApp.drillTo('tests', this.dataset.testId); event.stopPropagation();" title="View test: ${escapeHTML(t.name)}">${escapeHTML(t.name)} (${t.status})</span>`).join(', ');
         } else {
           const sources = getInheritedPassSource(r);
           if (sources && sources.length > 0) {
@@ -2655,9 +2802,9 @@
                 <div style="color: var(--text-secondary); font-size: 10px;">
                   ${sources.map(src => {
                     const testText = src.testName 
-                      ? `<span class="drill-link" onclick="ReqApp.drillTo('tests', '${escapeHTML(src.testId)}'); event.stopPropagation();" style="font-weight:600;">${escapeHTML(src.testName)}</span>`
+                      ? `<span class="drill-link" data-test-id="${escapeHTML(src.testId)}" onclick="ReqApp.drillTo('tests', this.dataset.testId); event.stopPropagation();" style="font-weight:600;">${escapeHTML(src.testName)}</span>`
                       : `Req ${escapeHTML(src.requirementId)}`;
-                    const progText = `<span class="drill-link" onclick="ReqApp.drillTo('programs', '${escapeHTML(src.programId)}'); event.stopPropagation();" style="font-style: italic;">${escapeHTML(src.programName)}</span>`;
+                    const progText = `<span class="drill-link" data-program-id="${escapeHTML(src.programId)}" onclick="ReqApp.drillTo('programs', this.dataset.programId); event.stopPropagation();" style="font-style: italic;">${escapeHTML(src.programName)}</span>`;
                     return `<div style="margin: 2px 0;">${testText}<br><span style="font-size:9px;">in ${progText}</span></div>`;
                   }).join('')}
                 </div>
@@ -2667,8 +2814,8 @@
             testsLinks = `
               <div style="display:inline-flex; align-items:center; gap:6px;" onclick="event.stopPropagation();">
                 <em style="color:var(--status-failed); font-style:normal;">Unlinked</em>
-                <button class="btn btn-primary btn-sm" onclick="ReqApp.createTestForReq('${r.programId}', '${r.id}'); event.stopPropagation();" style="font-size: 9px; padding: 2px 6px; font-weight:700; line-height:1; height:auto; border-radius:4px;" title="Create new test">+ Test</button>
-                <button class="btn btn-secondary btn-sm" onclick="ReqApp.openLinkTestModal('${r.id}'); event.stopPropagation();" style="font-size: 9px; padding: 2px 6px; font-weight:700; line-height:1; height:auto; border-radius:4px;" title="Link existing test">&#128279; Link</button>
+                <button class="btn btn-primary btn-sm" data-program-id="${escapeHTML(r.programId)}" data-req-id="${escapeHTML(r.id)}" onclick="ReqApp.createTestForReq(this.dataset.programId, this.dataset.reqId); event.stopPropagation();" style="font-size: 9px; padding: 2px 6px; font-weight:700; line-height:1; height:auto; border-radius:4px;" title="Create new test">+ Test</button>
+                <button class="btn btn-secondary btn-sm" data-req-id="${escapeHTML(r.id)}" onclick="ReqApp.openLinkTestModal(this.dataset.reqId); event.stopPropagation();" style="font-size: 9px; padding: 2px 6px; font-weight:700; line-height:1; height:auto; border-radius:4px;" title="Link existing test">&#128279; Link</button>
               </div>
             `;
           }
@@ -2689,7 +2836,7 @@
           : '';
 
         return `
-          <div class="req-card" style="cursor: pointer;" onclick="ReqApp.openModal('requirement-modal', '${r.id}')">
+          <div class="req-card" style="cursor: pointer;" data-req-id="${escapeHTML(r.id)}" onclick="ReqApp.openModal('requirement-modal', this.dataset.reqId)">
             ${isInherited ? `<div class="req-inheritance-indicator" title="Fulfill status inherited from a passed Capability"></div>` : ''}
             <div>
               <div class="req-card-header">
@@ -2697,7 +2844,7 @@
                   ${escapeHTML(r.id)}
                   <span class="badge" style="background-color: var(--border-color); color: var(--text-secondary); font-size: 9px; padding: 2px 4px; margin-left: 6px; font-weight: 700; border-radius: 4px;">${escapeHTML(r.component || 'SE')}</span>
                 </span>
-                <span class="req-program drill-link" onclick="ReqApp.drillTo('programs', '${r.programId}'); event.stopPropagation();" style="cursor:pointer;" title="Go to Program">${escapeHTML(prog ? prog.name : r.programId)}</span>
+                <span class="req-program drill-link" data-program-id="${escapeHTML(r.programId)}" onclick="ReqApp.drillTo('programs', this.dataset.programId); event.stopPropagation();" style="cursor:pointer;" title="Go to Program">${escapeHTML(prog ? prog.name : r.programId)}</span>
               </div>
               <p class="req-desc" style="margin-bottom:0;">${escapeHTML(r.description)}</p>
               ${notesHtml}
@@ -2717,7 +2864,7 @@
               <div class="req-footer-line">
                 <span class="req-label">Capability Link</span>
                 <span class="req-value" title="${cap ? escapeHTML(cap.id) : 'None'}">
-                  ${cap ? `<span class="drill-link" onclick="ReqApp.drillTo('capabilities', '${cap.id}'); event.stopPropagation();">${escapeHTML(cap.id)}</span>` : 'None'}
+                  ${cap ? `<span class="drill-link" data-cap-id="${escapeHTML(cap.id)}" onclick="ReqApp.drillTo('capabilities', this.dataset.capId); event.stopPropagation();">${escapeHTML(cap.id)}</span>` : 'None'}
                 </span>
               </div>
               ${r.capabilityId ? `
@@ -2747,7 +2894,7 @@
         
         let testsLinks = '';
         if (linkedTests.length > 0) {
-          testsLinks = linkedTests.map(t => `<span class="drill-link" onclick="ReqApp.drillTo('tests', '${escapeHTML(t.id)}'); event.stopPropagation();" title="View test: ${escapeHTML(t.name)}">${escapeHTML(t.name)}</span>`).join(', ');
+          testsLinks = linkedTests.map(t => `<span class="drill-link" data-test-id="${escapeHTML(t.id)}" onclick="ReqApp.drillTo('tests', this.dataset.testId); event.stopPropagation();" title="View test: ${escapeHTML(t.name)}">${escapeHTML(t.name)}</span>`).join(', ');
         } else {
           const sources = getInheritedPassSource(r);
           if (sources && sources.length > 0) {
@@ -2757,9 +2904,9 @@
                 <span style="color: var(--text-secondary); font-size: 10px; margin-left: 4px;">
                   ${sources.map(src => {
                     const testText = src.testName 
-                      ? `<span class="drill-link" onclick="ReqApp.drillTo('tests', '${escapeHTML(src.testId)}'); event.stopPropagation();" style="font-weight:600;">${escapeHTML(src.testName)}</span>`
+                      ? `<span class="drill-link" data-test-id="${escapeHTML(src.testId)}" onclick="ReqApp.drillTo('tests', this.dataset.testId); event.stopPropagation();" style="font-weight:600;">${escapeHTML(src.testName)}</span>`
                       : `Req ${escapeHTML(src.requirementId)}`;
-                    const progText = `<span class="drill-link" onclick="ReqApp.drillTo('programs', '${escapeHTML(src.programId)}'); event.stopPropagation();" style="font-style: italic;">${escapeHTML(src.programName)}</span>`;
+                    const progText = `<span class="drill-link" data-program-id="${escapeHTML(src.programId)}" onclick="ReqApp.drillTo('programs', this.dataset.programId); event.stopPropagation();" style="font-style: italic;">${escapeHTML(src.programName)}</span>`;
                     return `${testText} in ${progText}`;
                   }).join(', ')}
                 </span>
@@ -2769,8 +2916,8 @@
             testsLinks = `
               <div style="display:inline-flex; align-items:center; gap:6px;" onclick="event.stopPropagation();">
                 <em style="color:var(--status-failed); font-style:normal; font-size:12px;">Unlinked</em>
-                <button class="btn btn-primary btn-sm" onclick="ReqApp.createTestForReq('${r.programId}', '${r.id}'); event.stopPropagation();" style="font-size: 9px; padding: 2px 6px; font-weight:700; line-height:1; height:auto; border-radius:4px;" title="Create new test">+ Test</button>
-                <button class="btn btn-secondary btn-sm" onclick="ReqApp.openLinkTestModal('${r.id}'); event.stopPropagation();" style="font-size: 9px; padding: 2px 6px; font-weight:700; line-height:1; height:auto; border-radius:4px;" title="Link existing test">&#128279; Link</button>
+                <button class="btn btn-primary btn-sm" data-program-id="${escapeHTML(r.programId)}" data-req-id="${escapeHTML(r.id)}" onclick="ReqApp.createTestForReq(this.dataset.programId, this.dataset.reqId); event.stopPropagation();" style="font-size: 9px; padding: 2px 6px; font-weight:700; line-height:1; height:auto; border-radius:4px;" title="Create new test">+ Test</button>
+                <button class="btn btn-secondary btn-sm" data-req-id="${escapeHTML(r.id)}" onclick="ReqApp.openLinkTestModal(this.dataset.reqId); event.stopPropagation();" style="font-size: 9px; padding: 2px 6px; font-weight:700; line-height:1; height:auto; border-radius:4px;" title="Link existing test">&#128279; Link</button>
               </div>
             `;
           }
@@ -2785,13 +2932,13 @@
         const statusLabel = isInherited ? 'Passed (Inherited)' : r.status;
 
         return `
-          <tr style="cursor: pointer;" onclick="ReqApp.openModal('requirement-modal', '${r.id}')">
+          <tr style="cursor: pointer;" data-req-id="${escapeHTML(r.id)}" onclick="ReqApp.openModal('requirement-modal', this.dataset.reqId)">
             <td>
               <strong style="font-family:'Outfit',sans-serif;">${escapeHTML(r.id)}</strong>
               <span class="badge" style="background-color: var(--border-color); color: var(--text-secondary); font-size: 9px; padding: 2px 4px; margin-left: 6px; font-weight: 700; border-radius: 4px;">${escapeHTML(r.component || 'SE')}</span>
             </td>
             <td>
-              <span class="drill-link" onclick="ReqApp.drillTo('programs', '${r.programId}'); event.stopPropagation();">${escapeHTML(prog ? prog.name : r.programId)}</span>
+              <span class="drill-link" data-program-id="${escapeHTML(r.programId)}" onclick="ReqApp.drillTo('programs', this.dataset.programId); event.stopPropagation();">${escapeHTML(prog ? prog.name : r.programId)}</span>
             </td>
             <td>
               <div class="statement-cell">
@@ -2800,7 +2947,7 @@
               </div>
             </td>
             <td>
-              ${cap ? `<span class="drill-link" onclick="ReqApp.drillTo('capabilities', '${cap.id}'); event.stopPropagation();">${escapeHTML(cap.id)}</span>` : '<span style="color:var(--text-secondary);">None</span>'}
+              ${cap ? `<span class="drill-link" data-cap-id="${escapeHTML(cap.id)}" onclick="ReqApp.drillTo('capabilities', this.dataset.capId); event.stopPropagation();">${escapeHTML(cap.id)}</span>` : '<span style="color:var(--text-secondary);">None</span>'}
             </td>
             <td>
               ${testsLinks}
@@ -2869,7 +3016,8 @@
               const checkSymbol = isPassed ? '&#10003; ' : '&bull; ';
               return `
                 <span class="badge ${badgeClass} drill-link" 
-                      onclick="ReqApp.drillTo('requirements', '${r.id}'); event.stopPropagation();"
+                      data-req-id="${escapeHTML(r.id)}"
+                      onclick="ReqApp.drillTo('requirements', this.dataset.reqId); event.stopPropagation();"
                       style="cursor:pointer; display:inline-flex; align-items:center;" 
                       title="Click to view requirement ${r.id} details">
                   ${checkSymbol}${escapeHTML(r.id)}
@@ -2889,7 +3037,7 @@
           }).join('')
         : `<div style="display:flex; align-items:center; gap:8px;">
             <em style="color:var(--text-secondary); font-size:12px;">Unlinked</em>
-            <button class="btn btn-secondary" onclick="ReqApp.createRequirementForCap('${c.id}', event)" style="font-size:10px; padding: 2px 6px; font-weight:700; height:auto; line-height:1;">
+            <button class="btn btn-secondary" data-cap-id="${escapeHTML(c.id)}" onclick="ReqApp.createRequirementForCap(this.dataset.capId, event)" style="font-size:10px; padding: 2px 6px; font-weight:700; height:auto; line-height:1;">
               + Add Req
             </button>
            </div>`;
@@ -2900,7 +3048,7 @@
         : 'All linked requirements are in In Progress or Not Started state';
 
       return `
-        <tr style="cursor: pointer;" onclick="ReqApp.openModal('capability-modal', '${c.id}')">
+        <tr style="cursor: pointer;" data-cap-id="${escapeHTML(c.id)}" onclick="ReqApp.openModal('capability-modal', this.dataset.capId)">
           <td><strong style="font-family: 'Outfit', sans-serif;">${escapeHTML(c.id)}</strong></td>
           <td style="color: var(--text-secondary); font-size: 13px; max-width: 380px;">
             ${escapeHTML(c.description || 'No description.')}
@@ -2953,7 +3101,8 @@
       const reqsHtml = linkedReqs.length > 0 
         ? linkedReqs.map(r => `
             <span class="badge badge-pending drill-link" 
-                  onclick="ReqApp.drillTo('requirements', '${r.id}'); event.stopPropagation();"
+                  data-req-id="${escapeHTML(r.id)}"
+                  onclick="ReqApp.drillTo('requirements', this.dataset.reqId); event.stopPropagation();"
                   style="cursor:pointer; margin-right:4px; margin-bottom:4px; display:inline-flex; align-items:center;"
                   title="Click to view requirement detail">
               ${escapeHTML(r.id)}
@@ -2969,13 +3118,14 @@
       return `
         <tr id="test-row-${t.id}" 
             draggable="true" 
-            ondragstart="ReqApp.handleTestDragStart(event, '${t.id}')"
-            ondragover="ReqApp.handleTestDragOver(event, '${t.id}')"
-            ondragleave="ReqApp.handleTestDragLeave(event, '${t.id}')"
-            ondrop="ReqApp.handleTestDrop(event, '${t.id}')"
+            data-test-id="${escapeHTML(t.id)}"
+            ondragstart="ReqApp.handleTestDragStart(event, this.dataset.testId)"
+            ondragover="ReqApp.handleTestDragOver(event, this.dataset.testId)"
+            ondragleave="ReqApp.handleTestDragLeave(event, this.dataset.testId)"
+            ondrop="ReqApp.handleTestDrop(event, this.dataset.testId)"
             ondragend="ReqApp.handleTestDragEnd(event)"
             style="cursor: pointer;" 
-            onclick="ReqApp.openModal('test-modal', '${t.id}')">
+            onclick="ReqApp.openModal('test-modal', this.dataset.testId)">
           <td style="text-align: center; vertical-align: middle; cursor: grab;" onclick="event.stopPropagation();" class="drag-handle" title="Drag to reorder priority">
             <div style="display: flex; align-items: center; justify-content: center; gap: 6px;">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="color: var(--text-secondary); opacity: 0.6;">
@@ -3039,7 +3189,7 @@
                   return `<span class="badge ${badgeClass}" style="font-size: 12px; padding: 4px 8px; font-weight: 700; cursor: help;" title="Derived from subtasks: ${escapeHTML(subList)}. Click Edit to change.">${t.status}</span>`;
                 } else {
                   return `
-                    <select class="select-filter btn-sm ${t.status === 'Passed' ? 'select-status-passed' : t.status === 'In Progress' ? 'select-status-inprogress' : 'select-status-notstarted'}" style="font-size: 12px; font-weight: 600; cursor: pointer;" onclick="event.stopPropagation();" onchange="ReqApp.toggleTestOutcome('${t.id}', this.value)">
+                    <select class="select-filter btn-sm ${t.status === 'Passed' ? 'select-status-passed' : t.status === 'In Progress' ? 'select-status-inprogress' : 'select-status-notstarted'}" style="font-size: 12px; font-weight: 600; cursor: pointer;" onclick="event.stopPropagation();" data-test-id="${escapeHTML(t.id)}" onchange="ReqApp.toggleTestOutcome(this.dataset.testId, this.value)">
                       <option value="Not Started" ${t.status === 'Not Started' ? 'selected' : ''}>Not Started</option>
                       <option value="In Progress" ${t.status === 'In Progress' ? 'selected' : ''}>In Progress</option>
                       <option value="Passed" ${t.status === 'Passed' ? 'selected' : ''}>Passed</option>
@@ -3128,7 +3278,7 @@
       capListContainer.innerHTML = filteredCaps.map(c => {
         const badgeClass = c.status === 'Passed' ? 'badge-passed' : c.status === 'In Progress' ? 'badge-in-progress' : 'badge-not-started';
         return `
-          <div class="trace-node" id="trace-node-cap-${c.id}" onclick="ReqApp.openModal('capability-modal', '${c.id}')" data-type="capability" data-id="${c.id}">
+          <div class="trace-node" id="trace-node-cap-${escapeHTML(c.id)}" onclick="ReqApp.openModal('capability-modal', this.dataset.id)" data-type="capability" data-id="${escapeHTML(c.id)}">
             <div style="font-weight:700; font-size:13px; color:var(--text-primary);">${escapeHTML(c.id)}</div>
             <div style="font-size:11px; color:var(--text-secondary); margin-top:4px; text-overflow:ellipsis; overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; max-height:32px;">${escapeHTML(c.description || 'No description.')}</div>
             <div style="margin-top:8px; display:flex; justify-content:space-between; align-items:center;">
@@ -3147,7 +3297,7 @@
       const statusLabel = isInherited ? 'PASSED (INHERITED)' : r.status;
 
       return `
-        <div class="trace-node" id="trace-node-req-${r.id}" onclick="ReqApp.openModal('requirement-modal', '${r.id}')" data-type="requirement" data-id="${r.id}">
+        <div class="trace-node" id="trace-node-req-${escapeHTML(r.id)}" onclick="ReqApp.openModal('requirement-modal', this.dataset.id)" data-type="requirement" data-id="${escapeHTML(r.id)}">
           <div style="display:flex; justify-content:space-between; align-items:center;">
             <span style="font-weight:700; font-size:13px; color:var(--text-primary);">${escapeHTML(r.id)}</span>
             <span class="badge" style="background-color: var(--border-color); color: var(--text-secondary); font-size: 9px; padding: 2px 4px; font-weight: 700; border-radius: 4px;">${escapeHTML(r.component || 'SE')}</span>
@@ -3171,7 +3321,7 @@
           ? `<span style="font-size:9px; color:var(--text-secondary);">📅 ${formatPassDate(t.passedDate)}</span>` 
           : '';
         return `
-          <div class="trace-node" id="trace-node-test-${t.id}" onclick="ReqApp.openModal('test-modal', '${t.id}')" data-type="test" data-id="${t.id}">
+          <div class="trace-node" id="trace-node-test-${escapeHTML(t.id)}" onclick="ReqApp.openModal('test-modal', this.dataset.id)" data-type="test" data-id="${escapeHTML(t.id)}">
             <div style="font-weight:700; font-size:13px; color:var(--text-primary);">${escapeHTML(t.name)}</div>
             <div style="font-size:11px; color:var(--text-secondary); margin-top:4px;">ID: ${escapeHTML(t.id)} &middot; ${escapeHTML(t.type)}</div>
             <div style="margin-top:8px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:4px;">
@@ -3580,6 +3730,16 @@
     const capSelect = document.getElementById('requirement-capability-select');
     if (capSelect) {
       capSelect.value = capabilityId;
+    }
+  }
+
+  // Toggle visibility of the program actions dropdown
+  function toggleProgramDropdown(event) {
+    if (event) event.stopPropagation();
+    const dropdown = document.getElementById('program-actions-dropdown');
+    if (dropdown) {
+      const isVisible = dropdown.style.display === 'block';
+      dropdown.style.display = isVisible ? 'none' : 'block';
     }
   }
 
@@ -4136,7 +4296,8 @@
 
       activeRows.forEach(row => {
         if (row.length === 0) return;
-        const id = row[idIdx] !== undefined ? String(row[idIdx]).trim() : '';
+        const rawId = row[idIdx] !== undefined ? String(row[idIdx]).trim() : '';
+        const id = sanitizeId(rawId);
         const desc = row[descIdx] !== undefined ? String(row[descIdx]).trim() : '';
 
         if (!id) return; // Skip empty rows
@@ -4177,9 +4338,11 @@
 
       activeRows.forEach(row => {
         if (row.length === 0) return;
-        const id = row[idIdx] !== undefined ? String(row[idIdx]).trim() : '';
+        const rawId = row[idIdx] !== undefined ? String(row[idIdx]).trim() : '';
+        const id = sanitizeId(rawId);
         const desc = row[descIdx] !== undefined ? String(row[descIdx]).trim() : '';
-        let capId = (capIdx !== '-1' && row[capIdx] !== undefined) ? String(row[capIdx]).trim() : null;
+        let rawCapId = (capIdx !== '-1' && row[capIdx] !== undefined) ? String(row[capIdx]).trim() : null;
+        let capId = rawCapId ? sanitizeId(rawCapId) : null;
 
         if (!id) return; // Skip empty rows
 
@@ -4271,6 +4434,15 @@
         }
       });
     }
+
+    // Dismiss program actions dropdown when clicking elsewhere
+    document.addEventListener('click', (e) => {
+      const dropdown = document.getElementById('program-actions-dropdown');
+      const btn = document.getElementById('program-actions-btn');
+      if (dropdown && btn && !btn.contains(e.target) && !dropdown.contains(e.target)) {
+        dropdown.style.display = 'none';
+      }
+    });
   }
 
   // Onboarding Walkthrough logic
@@ -4528,9 +4700,13 @@
     openModal,
     closeModal,
     switchModalTab,
+    switchProgramTab,
+    toggleProgramDropdown,
+    toggleProgramsSidebar,
     saveProgram,
     deleteProgram,
     selectProgram,
+    renderPlanning,
     saveRequirement,
     deleteRequirement,
     saveCapability,
@@ -4578,6 +4754,8 @@
     connectSharedDatabase,
     reconnectSharedDatabase,
     disconnectSharedDatabase,
-    pullSharedDatabase
+    pullSharedDatabase,
+    connectSharedDatabaseFromPrompt,
+    skipDbSetupPrompt
   };
 })();

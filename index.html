@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="description" content="Requirement Wrangler is a portable utility to track requirements, tests, and capabilities across aerospace payload programs.">
   <title>Requirement Wrangler</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='bgGrad' x1='0%25' y1='0%25' x2='100%25' y2='100%25'%3E%3Cstop offset='0%25' stop-color='%231E293B'/%3E%3Cstop offset='100%25' stop-color='%230F2439'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='32' height='32' rx='8' fill='url(%23bgGrad)'/%3E%3Cpolygon points='16 6 23 25 16 21 9 25' fill='%23FFFFFF'/%3E%3Cellipse cx='16' cy='15' rx='11' ry='4.5' stroke='%233B82F6' stroke-width='2' fill='none' transform='rotate(-15 16 15)'/%3E%3C/svg%3E">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <link rel="stylesheet" href="styles.css">
 </head>
@@ -32,13 +33,6 @@
         <button class="nav-item active" id="nav-dashboard" onclick="ReqApp.switchView('dashboard')">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="9"></rect><rect x="14" y="3" width="7" height="5"></rect><rect x="14" y="12" width="7" height="9"></rect><rect x="3" y="16" width="7" height="5"></rect></svg>
           <span>Dashboard</span>
-        </button>
-        <button class="nav-item" id="nav-planning" onclick="ReqApp.switchView('planning')">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M12 20h9"></path>
-            <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
-          </svg>
-          <span>Planning Desk</span>
         </button>
         <button class="nav-item" id="nav-programs" onclick="ReqApp.switchView('programs')">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
@@ -196,94 +190,6 @@
           </div>
         </section>
 
-        <!-- PLANNING DESK VIEW -->
-        <section id="view-planning" class="view-pane">
-          <div class="table-controls" style="margin-bottom: 16px;">
-            <div style="display: flex; gap: 16px; align-items: center; flex-wrap: wrap;">
-              <div style="display: flex; align-items: center; gap: 8px;">
-                <label class="form-label" for="planning-program-select" style="margin-bottom: 0; white-space: nowrap;">Program Filter:</label>
-                <select class="select-filter" id="planning-program-select" onchange="ReqApp.render()" style="padding: 8px 12px; font-size: 13px;">
-                  <!-- Dynamically populated -->
-                </select>
-              </div>
-              <div style="display: flex; align-items: center; gap: 8px;">
-                <label class="form-label" for="planning-component-filter" style="margin-bottom: 0; white-space: nowrap;">Component Filter:</label>
-                <select class="select-filter" id="planning-component-filter" onchange="ReqApp.render()" style="padding: 8px 12px; font-size: 13px;">
-                  <option value="ALL">All Components</option>
-                  <option value="SW">SW - Software</option>
-                  <option value="ME">ME - Mechanical</option>
-                  <option value="EE">EE - Electrical</option>
-                  <option value="OP">OP - Optical</option>
-                  <option value="SE">SE - Systems Eng</option>
-                </select>
-              </div>
-            </div>
-          </div>
-
-          <!-- Mini Metrics Panel -->
-          <div class="planning-metrics-panel" style="display: flex; gap: 16px; margin-bottom: 24px; flex-wrap: wrap;">
-            <div class="planning-metric-card" style="flex: 1; min-width: 180px; background-color: var(--bg-card); border: 1px solid var(--border-color); border-radius: 8px; padding: 16px; display: flex; flex-direction: column; gap: 4px; box-shadow: var(--shadow-sm);">
-              <span style="font-size: 11px; font-weight: 700; color: var(--text-secondary); text-transform: uppercase;">Verification Coverage</span>
-              <div id="planning-stat-coverage" style="font-size: 24px; font-weight: 800; font-family: 'Outfit', sans-serif; color: var(--text-primary);">0%</div>
-              <span id="planning-stat-coverage-sub" style="font-size: 11px; color: var(--text-secondary);">0 / 0 requirements covered</span>
-            </div>
-            <div class="planning-metric-card" style="flex: 1; min-width: 180px; background-color: var(--bg-card); border: 1px solid var(--border-color); border-radius: 8px; padding: 16px; display: flex; flex-direction: column; gap: 4px; box-shadow: var(--shadow-sm);">
-              <span style="font-size: 11px; font-weight: 700; color: var(--text-secondary); text-transform: uppercase;">Coverage Gaps (Untested)</span>
-              <div id="planning-stat-gaps" style="font-size: 24px; font-weight: 800; font-family: 'Outfit', sans-serif; color: var(--status-failed);">0</div>
-              <span style="font-size: 11px; color: var(--text-secondary);">Requirements missing tests</span>
-            </div>
-            <div class="planning-metric-card" style="flex: 1; min-width: 180px; background-color: var(--bg-card); border: 1px solid var(--border-color); border-radius: 8px; padding: 16px; display: flex; flex-direction: column; gap: 4px; box-shadow: var(--shadow-sm);">
-              <span style="font-size: 11px; font-weight: 700; color: var(--text-secondary); text-transform: uppercase;">Execution Backlog</span>
-              <div id="planning-stat-backlog" style="font-size: 24px; font-weight: 800; font-family: 'Outfit', sans-serif; color: var(--status-pending);">0</div>
-              <span id="planning-stat-backlog-sub" style="font-size: 11px; color: var(--text-secondary);">Planned tests not started/in-progress</span>
-            </div>
-            <div class="planning-metric-card" style="flex: 1; min-width: 180px; background-color: var(--bg-card); border: 1px solid var(--border-color); border-radius: 8px; padding: 16px; display: flex; flex-direction: column; gap: 4px; box-shadow: var(--shadow-sm);">
-              <span style="font-size: 11px; font-weight: 700; color: var(--text-secondary); text-transform: uppercase;">Total Time Estimate</span>
-              <div id="planning-stat-total-time" style="font-size: 24px; font-weight: 800; font-family: 'Outfit', sans-serif; color: var(--accent-color);">0d</div>
-              <span id="planning-stat-total-time-sub" style="font-size: 11px; color: var(--text-secondary);">0d completed / 0d total</span>
-            </div>
-          </div>
-
-          <!-- Dual-Column Cockpit Layout -->
-          <div class="planning-split-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; height: calc(100vh - 300px); overflow: hidden;">
-            <!-- Untested Requirements Column -->
-            <div class="backlog-column-wrapper" style="display: flex; flex-direction: column; gap: 12px; height: 100%; overflow: hidden;">
-              <div class="backlog-column-header" style="background-color: rgba(239, 68, 68, 0.03); border: 1px dashed rgba(239, 68, 68, 0.25); border-radius: 8px; padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; flex-shrink: 0;">
-                <h3 style="font-size: 13px; font-weight: 700; color: #EF4444; display: flex; align-items: center; gap: 6px; margin: 0; text-transform: uppercase; letter-spacing: 0.5px;">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
-                  <span>Untested Requirements (Gaps)</span>
-                </h3>
-                <span id="planning-untested-count" class="badge badge-failed" style="font-size: 10px; padding: 2px 8px; border-radius: 12px;">0</span>
-              </div>
-              <div class="search-input-wrapper" style="flex: none; max-width: 100%;">
-                <span class="search-icon" aria-hidden="true">&#128269;</span>
-                <input type="search" class="search-input" id="search-planning-untested" placeholder="Search untested requirements..." oninput="ReqApp.render()">
-              </div>
-              <div id="planning-untested-list" style="display: flex; flex-direction: column; gap: 12px; flex-grow: 1; overflow-y: auto; padding-right: 4px; padding-bottom: 20px;">
-                <!-- Dynamically populated cards -->
-              </div>
-            </div>
-
-            <!-- Test Execution Backlog Column -->
-            <div class="backlog-column-wrapper" style="display: flex; flex-direction: column; gap: 12px; height: 100%; overflow: hidden;">
-              <div class="backlog-column-header" style="background-color: rgba(217, 119, 6, 0.03); border: 1px dashed rgba(217, 119, 6, 0.25); border-radius: 8px; padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; flex-shrink: 0;">
-                <h3 style="font-size: 13px; font-weight: 700; color: #D97706; display: flex; align-items: center; gap: 6px; margin: 0; text-transform: uppercase; letter-spacing: 0.5px;">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
-                  <span>Test Backlog (Execution)</span>
-                </h3>
-                <span id="planning-pending-count" class="badge badge-pending" style="font-size: 10px; padding: 2px 8px; border-radius: 12px;">0</span>
-              </div>
-              <div class="search-input-wrapper" style="flex: none; max-width: 100%;">
-                <span class="search-icon" aria-hidden="true">&#128269;</span>
-                <input type="search" class="search-input" id="search-planning-pending" placeholder="Search test backlog..." oninput="ReqApp.render()">
-              </div>
-              <div id="planning-pending-list" style="display: flex; flex-direction: column; gap: 12px; flex-grow: 1; overflow-y: auto; padding-right: 4px; padding-bottom: 20px;">
-                <!-- Dynamically populated cards -->
-              </div>
-            </div>
-          </div>
-        </section>
-
         <!-- PROGRAMS VIEW: MASTER-DETAIL -->
         <section id="view-programs" class="view-pane">
           <div class="program-split-container">
@@ -331,10 +237,10 @@
               </select>
               <!-- View Grid/List Toggle Container -->
               <div class="view-toggle-container">
-                <button class="view-toggle-btn active" id="toggle-req-grid" onclick="ReqApp.setRequirementsViewMode('grid')" title="Grid View">
+                <button class="view-toggle-btn" id="toggle-req-grid" onclick="ReqApp.setRequirementsViewMode('grid')" title="Grid View">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
                 </button>
-                <button class="view-toggle-btn" id="toggle-req-list" onclick="ReqApp.setRequirementsViewMode('list')" title="List View">
+                <button class="view-toggle-btn active" id="toggle-req-list" onclick="ReqApp.setRequirementsViewMode('list')" title="List View">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>
                 </button>
               </div>
@@ -975,6 +881,22 @@
         <button class="modal-close" onclick="ReqApp.closeModal('settings-modal')">&times;</button>
       </header>
       <div class="modal-body" style="display:flex; flex-direction:column; gap:20px;">
+        <!-- 1. Intranet Shared Database (Collaboration Focus) -->
+        <div style="background: rgba(37, 99, 235, 0.03); border: 1px solid rgba(37, 99, 235, 0.15); padding: 16px; border-radius: 12px;">
+          <h3 style="font-size:13px; font-weight:700; text-transform:uppercase; color:var(--accent-color); margin-top:0; margin-bottom:6px; display:flex; align-items:center; gap:6px;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 16v1a2 2 0 0 1-2 2H3a2 2 0 0 1-2 2V7a2 2 0 0 1 2-2h11a2 2 0 0 1 2 2v1"></path><path d="M18 8h6v8h-6z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+            <span>Intranet Shared Database</span>
+            <span style="font-size:9px; background-color:rgba(37, 99, 235, 0.1); color:var(--accent-color); padding:2px 6px; border-radius:4px; font-weight:700; margin-left:auto; letter-spacing:0.5px;">PRIMARY COLLABORATION</span>
+          </h3>
+          <p style="font-size:12px; color:var(--text-secondary); margin-bottom:12px; line-height:1.4; margin-top:0;">
+            Synchronize requirements, tests, and status logs with a shared JSON file on your corporate network share for real-time collaboration.
+          </p>
+          <div id="settings-shared-db-section">
+            <!-- Dynamically populated by JS -->
+          </div>
+        </div>
+
+        <!-- 2. Application State Data (Backup & Revert) -->
         <div>
           <h3 style="font-size:13px; font-weight:700; text-transform:uppercase; color:var(--text-secondary); margin-top:0; margin-bottom:10px; border-bottom:1px solid var(--border-color); padding-bottom:6px;">
             Application State Data
@@ -994,18 +916,7 @@
           </div>
         </div>
 
-        <div>
-          <h3 style="font-size:13px; font-weight:700; text-transform:uppercase; color:var(--text-secondary); margin-top:0; margin-bottom:10px; border-bottom:1px solid var(--border-color); padding-bottom:6px;">
-            Intranet Shared Database
-          </h3>
-          <p style="font-size:12px; color:var(--text-secondary); margin-bottom:12px; line-height:1.4;">
-            Synchronize requirements and test logs with a shared JSON file on a corporate network share for real-time collaboration.
-          </p>
-          <div id="settings-shared-db-section">
-            <!-- Dynamically populated by JS -->
-          </div>
-        </div>
-
+        <!-- 3. System Configuration -->
         <div>
           <h3 style="font-size:13px; font-weight:700; text-transform:uppercase; color:var(--text-secondary); margin-top:0; margin-bottom:10px; border-bottom:1px solid var(--border-color); padding-bottom:6px;">
             System Configuration
@@ -1024,19 +935,6 @@
               <span>Team Roster</span>
             </button>
           </div>
-        </div>
-
-        <div>
-          <h3 style="font-size:13px; font-weight:700; text-transform:uppercase; color:var(--status-failed); margin-top:0; margin-bottom:10px; border-bottom:1px solid var(--status-failed-border); padding-bottom:6px;">
-            Danger Zone
-          </h3>
-          <p style="font-size:12px; color:var(--text-secondary); margin-bottom:12px; line-height:1.4;">
-            Warning: Resetting mock data clears all custom inputs and reverts state to standard flight instrument project templates. This action is irreversible.
-          </p>
-          <button class="btn btn-danger btn-sm" onclick="ReqApp.closeModal('settings-modal'); ReqApp.resetData();" style="display:inline-flex; align-items:center; gap:6px;">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path></svg>
-            <span>Clear & Reset Mock Data</span>
-          </button>
         </div>
       </div>
       <footer class="modal-footer">
@@ -1068,6 +966,34 @@
       </footer>
     </div>
   </div>
+
+  <!-- Welcome & Database Setup Prompt Modal -->
+  <div class="modal-backdrop" id="db-setup-prompt-modal">
+    <div class="modal-content" style="max-width: 480px; text-align: center;">
+      <header class="modal-header" style="justify-content: center;">
+        <h2 style="display:flex; align-items:center; gap:8px; color: var(--accent-color);">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path><path d="M3 12c0 1.66 4 3 9 3s9-1.34 9-3"></path></svg>
+          <span>Setup Collaboration Sync</span>
+        </h2>
+      </header>
+      <div class="modal-body" style="display:flex; flex-direction:column; gap:16px; padding: 20px 0;">
+        <p style="font-size:13px; color:var(--text-primary); line-height:1.5; margin: 0; font-weight: 500;">
+          Welcome to Requirement Wrangler!
+        </p>
+        <p style="font-size:12px; color:var(--text-secondary); line-height:1.5; margin: 0;">
+          Synchronize your requirements compliance, test configurations, and team progress logs with a shared JSON file on your intranet or network share for real-time collaboration.
+        </p>
+        <p style="font-size:11px; color:var(--text-secondary); line-height:1.4; margin: 0; font-style: italic;">
+          If you want to work individually or set up the shared database later, you can choose to work offline.
+        </p>
+      </div>
+      <footer class="modal-footer" style="justify-content: center; gap: 12px; border-top: none; padding-top: 0;">
+        <button type="button" class="btn btn-primary" onclick="ReqApp.connectSharedDatabaseFromPrompt()">Connect Shared File...</button>
+        <button type="button" class="btn btn-secondary" onclick="ReqApp.skipDbSetupPrompt()">Use Browser Storage (Offline)</button>
+      </footer>
+    </div>
+  </div>
+
 
   <!-- Print Report Container (Visible only in print media) -->
   <div id="print-report-container" class="print-report-container" aria-live="polite"></div>

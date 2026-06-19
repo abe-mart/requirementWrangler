@@ -1036,6 +1036,7 @@ body {
   height: calc(100vh - 140px);
   gap: 24px;
   overflow: hidden;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 .program-list-side {
   width: 320px;
@@ -1048,6 +1049,16 @@ body {
   gap: 12px;
   overflow-y: auto;
   flex-shrink: 0;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.program-split-container.collapsed-sidebar .program-list-side {
+  width: 0;
+  padding-left: 0;
+  padding-right: 0;
+  border-width: 0;
+  opacity: 0;
+  pointer-events: none;
+  margin-right: -24px; /* Hide the gap spacing */
 }
 .program-detail-side {
   flex-grow: 1;
@@ -1059,6 +1070,7 @@ body {
   flex-direction: column;
   gap: 24px;
   overflow-y: auto;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 .program-card-item {
   padding: 16px;
@@ -1993,6 +2005,207 @@ body {
   font-weight: 500;
   color: var(--text-primary);
   line-height: 1.3;
+}
+
+.clickable-metric-card:hover {
+  border-color: var(--accent-color) !important;
+  transform: translateY(-2px);
+  background-color: rgba(37, 99, 235, 0.02) !important;
+  box-shadow: var(--shadow-md) !important;
+}
+[data-theme="dark"] .clickable-metric-card:hover {
+  background-color: rgba(255, 255, 255, 0.02) !important;
+}
+
+/* Header Metric Cards */
+.header-metric-card {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-color);
+  padding: 4px 12px;
+  border-radius: 8px;
+  height: 32px;
+  box-shadow: var(--shadow-sm);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  user-select: none;
+  white-space: nowrap;
+}
+
+.header-metric-card .card-label {
+  color: var(--text-secondary);
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  line-height: 1;
+}
+
+.header-metric-card .card-value {
+  font-weight: 800;
+  font-family: 'Outfit', sans-serif;
+  font-size: 13px;
+  line-height: 1;
+}
+
+.header-metric-card .card-subtext {
+  color: var(--text-secondary);
+  font-size: 9px;
+  font-weight: 500;
+  line-height: 1;
+}
+
+.clickable-header-card {
+  cursor: pointer;
+}
+
+.clickable-header-card:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md) !important;
+}
+
+/* Monochromatic status theme card overrides */
+.header-metric-card.coverage-full {
+  border-color: var(--status-passed-border);
+  background-color: var(--status-passed-bg);
+}
+.header-metric-card.coverage-full .card-label {
+  color: var(--status-passed);
+  opacity: 0.85;
+}
+.header-metric-card.coverage-full .card-value {
+  color: var(--status-passed);
+}
+.header-metric-card.coverage-full .card-subtext {
+  color: var(--status-passed);
+  opacity: 0.75;
+}
+
+.header-metric-card.coverage-partial {
+  border-color: var(--border-color);
+  background-color: var(--bg-card);
+}
+.header-metric-card.coverage-partial .card-label {
+  color: var(--text-secondary);
+}
+.header-metric-card.coverage-partial .card-value {
+  color: var(--text-primary);
+}
+.header-metric-card.coverage-partial .card-subtext {
+  color: var(--text-secondary);
+}
+
+.header-metric-card.gaps-warning {
+  border-color: var(--status-failed-border);
+  background-color: var(--status-failed-bg);
+}
+.header-metric-card.gaps-warning .card-label {
+  color: var(--status-failed);
+  opacity: 0.85;
+}
+.header-metric-card.gaps-warning .card-value {
+  color: var(--status-failed);
+}
+.header-metric-card.gaps-warning .card-subtext {
+  color: var(--status-failed);
+  opacity: 0.75;
+}
+.header-metric-card.gaps-warning:hover {
+  border-color: var(--status-failed) !important;
+  background-color: rgba(239, 68, 68, 0.14) !important;
+}
+
+.header-metric-card.no-gaps {
+  border-color: var(--status-passed-border);
+  background-color: var(--status-passed-bg);
+}
+.header-metric-card.no-gaps .card-label {
+  color: var(--status-passed);
+  opacity: 0.85;
+}
+.header-metric-card.no-gaps .card-value {
+  color: var(--status-passed);
+}
+.header-metric-card.no-gaps .card-subtext {
+  color: var(--status-passed);
+  opacity: 0.75;
+}
+.header-metric-card.no-gaps:hover {
+  border-color: var(--status-passed) !important;
+  background-color: rgba(16, 185, 129, 0.14) !important;
+}
+
+.header-metric-card.backlog-warning {
+  border-color: var(--status-pending-border);
+  background-color: var(--status-pending-bg);
+}
+.header-metric-card.backlog-warning .card-label {
+  color: var(--status-pending);
+  opacity: 0.85;
+}
+.header-metric-card.backlog-warning .card-value {
+  color: var(--status-pending);
+}
+.header-metric-card.backlog-warning .card-subtext {
+  color: var(--status-pending);
+  opacity: 0.75;
+}
+.header-metric-card.backlog-warning:hover {
+  border-color: var(--status-pending) !important;
+  background-color: rgba(217, 119, 6, 0.14) !important;
+}
+[data-theme="dark"] .header-metric-card.backlog-warning:hover {
+  background-color: rgba(251, 191, 36, 0.14) !important;
+}
+
+.header-metric-card.effort-neutral {
+  border-color: var(--border-color);
+  background-color: var(--bg-canvas);
+}
+.header-metric-card.effort-neutral .card-label {
+  color: var(--text-secondary);
+}
+.header-metric-card.effort-neutral .card-value {
+  color: var(--text-primary);
+}
+.header-metric-card.effort-neutral .card-subtext {
+  color: var(--text-secondary);
+}
+
+/* Floating Dropdown Menu */
+.dropdown-menu-floating {
+  box-shadow: var(--shadow-lg) !important;
+  border: 1px solid var(--border-color) !important;
+  background-color: var(--bg-card) !important;
+}
+
+.dropdown-item-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  background: none;
+  border: none;
+  text-align: left;
+  font-size: 13px;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.dropdown-item-btn:hover {
+  background-color: var(--tr-hover) !important;
+}
+
+.dropdown-item-btn.dropdown-item-danger {
+  color: var(--status-failed) !important;
+}
+
+.dropdown-item-btn.dropdown-item-danger:hover {
+  background-color: rgba(239, 68, 68, 0.08) !important;
+  color: var(--status-failed) !important;
 }
 
 
