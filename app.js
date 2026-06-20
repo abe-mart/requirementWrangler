@@ -8,6 +8,8 @@
   let reqViewMode = localStorage.getItem('req_view_mode') || 'list'; // 'grid' or 'list'
   let selectedProgramId = state.programs.length > 0 ? state.programs[0].id : null;
   let selectedProgramTab = 'overview';
+  let planningTestFilter = 'todo'; // 'todo' or 'passed'
+  let testModalRequirementStates = {};
 
   // Traceability page states
   let traceabilityData = { caps: [], reqs: [], tests: [] };
@@ -649,8 +651,93 @@
   };
 
 
+  // HTML5 History SPA State Management
+  function pushState(viewId, programId = selectedProgramId, programTab = selectedProgramTab) {
+    const stateObj = {
+      view: viewId,
+      programId: programId,
+      programTab: programTab
+    };
+    const currentHistoryState = history.state;
+    if (!currentHistoryState) {
+      history.replaceState(stateObj, '', '');
+    } else if (currentHistoryState.view !== viewId || 
+               currentHistoryState.programId !== programId ||
+               currentHistoryState.programTab !== programTab) {
+      history.pushState(stateObj, '', '');
+    }
+  }
+
+  function applyState(stateObj, shouldPush = false) {
+    if (!stateObj || !stateObj.view) return;
+
+    currentView = stateObj.view;
+
+    // Update active class on nav buttons
+    document.querySelectorAll('.nav-item').forEach(btn => {
+      btn.classList.remove('active');
+    });
+    const activeNav = document.getElementById(`nav-${stateObj.view}`);
+    if (activeNav) activeNav.classList.add('active');
+
+    // Update visibility of panes
+    document.querySelectorAll('.view-pane').forEach(pane => {
+      pane.classList.remove('active');
+    });
+    const activePane = document.getElementById(`view-${stateObj.view}`);
+    if (activePane) activePane.classList.add('active');
+
+    // Update heading text
+    if (viewTitles[stateObj.view]) {
+      document.getElementById('page-heading').innerText = viewTitles[stateObj.view];
+    }
+
+    // Update primary action button in header
+    const actionBtn = document.getElementById('header-action-btn');
+    if (actionBtn) {
+      if (stateObj.view === 'dashboard' || stateObj.view === 'traceability') {
+        actionBtn.style.display = 'none';
+      } else {
+        actionBtn.style.display = 'inline-flex';
+        const label = actionBtn.querySelector('span');
+        if (stateObj.view === 'programs') {
+          label.innerText = 'Add Program';
+          actionBtn.setAttribute('onclick', "ReqApp.openModal('program-modal')");
+        } else if (stateObj.view === 'requirements') {
+          label.innerText = 'Add Requirement';
+          actionBtn.setAttribute('onclick', "ReqApp.openModal('requirement-modal')");
+        } else if (stateObj.view === 'capabilities') {
+          label.innerText = 'Add Capability';
+          actionBtn.setAttribute('onclick', "ReqApp.openModal('capability-modal')");
+        } else if (stateObj.view === 'tests') {
+          label.innerText = 'Add Test';
+          actionBtn.setAttribute('onclick', "ReqApp.openModal('test-modal')");
+        }
+      }
+    }
+
+    if (stateObj.programId !== undefined) {
+      selectedProgramId = stateObj.programId;
+    }
+    if (stateObj.programTab !== undefined) {
+      selectedProgramTab = stateObj.programTab;
+    }
+
+    if (shouldPush) {
+      const currentHistoryState = history.state;
+      if (!currentHistoryState || 
+          currentHistoryState.view !== stateObj.view || 
+          currentHistoryState.programId !== stateObj.programId ||
+          currentHistoryState.programTab !== stateObj.programTab) {
+        history.pushState(stateObj, '', '');
+      }
+    }
+
+    render();
+  }
+
   // Switch view tabs
-  function switchView(viewId) {
+  function switchView(viewId, shouldPush = true) {
     currentView = viewId;
     
     // Update active class on nav buttons
@@ -672,24 +759,30 @@
 
     // Update primary action button in header
     const actionBtn = document.getElementById('header-action-btn');
-    if (viewId === 'dashboard' || viewId === 'traceability') {
-      actionBtn.style.display = 'none';
-    } else {
-      actionBtn.style.display = 'inline-flex';
-      const label = actionBtn.querySelector('span');
-      if (viewId === 'programs') {
-        label.innerText = 'Add Program';
-        actionBtn.setAttribute('onclick', "ReqApp.openModal('program-modal')");
-      } else if (viewId === 'requirements') {
-        label.innerText = 'Add Requirement';
-        actionBtn.setAttribute('onclick', "ReqApp.openModal('requirement-modal')");
-      } else if (viewId === 'capabilities') {
-        label.innerText = 'Add Capability';
-        actionBtn.setAttribute('onclick', "ReqApp.openModal('capability-modal')");
-      } else if (viewId === 'tests') {
-        label.innerText = 'Add Test';
-        actionBtn.setAttribute('onclick', "ReqApp.openModal('test-modal')");
+    if (actionBtn) {
+      if (viewId === 'dashboard' || viewId === 'traceability') {
+        actionBtn.style.display = 'none';
+      } else {
+        actionBtn.style.display = 'inline-flex';
+        const label = actionBtn.querySelector('span');
+        if (viewId === 'programs') {
+          label.innerText = 'Add Program';
+          actionBtn.setAttribute('onclick', "ReqApp.openModal('program-modal')");
+        } else if (viewId === 'requirements') {
+          label.innerText = 'Add Requirement';
+          actionBtn.setAttribute('onclick', "ReqApp.openModal('requirement-modal')");
+        } else if (viewId === 'capabilities') {
+          label.innerText = 'Add Capability';
+          actionBtn.setAttribute('onclick', "ReqApp.openModal('capability-modal')");
+        } else if (viewId === 'tests') {
+          label.innerText = 'Add Test';
+          actionBtn.setAttribute('onclick', "ReqApp.openModal('test-modal')");
+        }
       }
+    }
+
+    if (shouldPush) {
+      pushState(viewId);
     }
 
     render();
@@ -699,12 +792,13 @@
   function drillTo(viewId, query) {
     if (viewId === 'planning') {
       selectedProgramTab = 'planning';
-      switchView('programs');
-      selectProgram(query);
+      selectedProgramId = query;
+      switchView('programs', false);
+      selectProgram(query, true);
       return;
     }
 
-    switchView(viewId);
+    switchView(viewId, false);
     
     if (viewId === 'requirements') {
       const searchBox = document.getElementById('search-requirements');
@@ -715,10 +809,12 @@
       if (progFilter) progFilter.value = 'ALL';
       if (statusFilter) statusFilter.value = 'ALL';
       renderRequirements();
+      pushState('requirements');
     } else if (viewId === 'capabilities') {
       const searchBox = document.getElementById('search-capabilities');
       if (searchBox) searchBox.value = query;
       renderCapabilities();
+      pushState('capabilities');
     } else if (viewId === 'tests') {
       const searchBox = document.getElementById('search-tests');
       if (searchBox) searchBox.value = query;
@@ -730,14 +826,19 @@
       const assigneeFilter = document.getElementById('filter-test-assignee');
       if (assigneeFilter) assigneeFilter.value = 'ALL';
       renderTests();
+      pushState('tests');
     } else if (viewId === 'programs') {
-      selectProgram(query);
+      selectedProgramId = query;
+      selectProgram(query, true);
     }
   }
 
   // Set selected program in split-pane
-  function selectProgram(id) {
+  function selectProgram(id, shouldPush = true) {
     selectedProgramId = id;
+    if (shouldPush) {
+      pushState(currentView, id, selectedProgramTab);
+    }
     renderPrograms();
   }
 
@@ -825,8 +926,16 @@
     if (backdrop) backdrop.style.display = 'none';
   }
 
-  function switchProgramTab(tabId) {
+  function switchProgramTab(tabId, shouldPush = true) {
     selectedProgramTab = tabId;
+    if (shouldPush) {
+      pushState(currentView, selectedProgramId, tabId);
+    }
+    renderPrograms();
+  }
+
+  function togglePlanningTestFilter(filter) {
+    planningTestFilter = filter;
     renderPrograms();
   }
 
@@ -884,8 +993,9 @@
   // Populate requirements checkboxes for the selected program
   function populateTestRequirements() {
     const programSelect = document.getElementById('test-program-select');
-    const container = document.getElementById('test-requirements-checkbox-list');
-    if (!programSelect || !container) return;
+    const leftContainer = document.getElementById('test-requirements-checkbox-list');
+    const rightContainer = document.getElementById('test-requirements-status-list');
+    if (!programSelect || !leftContainer) return;
 
     // Reset search filter
     const searchInput = document.getElementById('test-requirements-search');
@@ -900,30 +1010,164 @@
 
     const programId = programSelect.value;
     if (!programId) {
-      container.innerHTML = '<div style="color:var(--text-secondary); font-size:12px; padding:4px;">Select a program first</div>';
+      leftContainer.innerHTML = '<div style="color:var(--text-secondary); font-size:12px; padding:4px;">Select a program first</div>';
+      if (rightContainer) rightContainer.innerHTML = '';
       return;
     }
 
     const programReqs = state.requirements.filter(r => r.programId === programId);
     if (programReqs.length === 0) {
-      container.innerHTML = '<div style="color:var(--text-secondary); font-size:12px; padding:4px;">No requirements exist for this program</div>';
+      leftContainer.innerHTML = '<div style="color:var(--text-secondary); font-size:12px; padding:4px;">No requirements exist for this program</div>';
+      if (rightContainer) rightContainer.innerHTML = '';
       return;
     }
 
     const editId = document.getElementById('test-edit-id').value;
     const editingTest = editId ? state.tests.find(t => t.id === editId) : null;
     const checkedIds = editingTest ? (editingTest.requirementIds || []) : [];
+    const implementedIds = editingTest 
+      ? (editingTest.implementedRequirementIds || (editingTest.status === 'Passed' ? checkedIds : []))
+      : [];
 
-    container.innerHTML = programReqs.map(r => {
-      const isChecked = checkedIds.includes(r.id) ? 'checked' : '';
+    // Initialize testModalRequirementStates for all program requirements
+    testModalRequirementStates = {};
+    programReqs.forEach(r => {
+      const isChecked = checkedIds.includes(r.id);
+      testModalRequirementStates[r.id] = {
+        checked: isChecked,
+        implemented: isChecked ? implementedIds.includes(r.id) : false
+      };
+    });
+
+    // Render Left Column (Checklist of all program requirements)
+    leftContainer.innerHTML = programReqs.map(r => {
+      const stateObj = testModalRequirementStates[r.id];
+      const isChecked = stateObj.checked;
       const compCode = r.component || 'SE';
       return `
-        <label style="display:flex; align-items:flex-start; gap:8px; font-size:12px; cursor:pointer; color:var(--text-primary); margin: 2px 0;">
-          <input type="checkbox" name="test-requirement-checkbox" value="${escapeHTML(r.id)}" ${isChecked} style="margin-top:2px;">
-          <span><strong>${escapeHTML(r.id)}</strong> <span class="badge" style="background-color: var(--border-color); color: var(--text-secondary); font-size: 8px; padding: 1px 4px; font-weight: 700; border-radius: 3px; margin-right: 4px; vertical-align: middle;">${escapeHTML(compCode)}</span>: ${escapeHTML(r.description)}</span>
+        <label class="test-req-checkbox-label">
+          <input type="checkbox" name="test-requirement-checkbox" value="${escapeHTML(r.id)}" ${isChecked ? 'checked' : ''} onchange="ReqApp.onTestReqCheckboxChange(this)">
+          <span>
+            <strong>${escapeHTML(r.id)}</strong> 
+            <span class="badge" style="background-color: var(--border-color); color: var(--text-secondary); font-size: 9px; padding: 1px 5px; font-weight: 700; border-radius: 3px; margin-right: 4px; vertical-align: middle;">${escapeHTML(compCode)}</span>: 
+            ${escapeHTML(r.description)}
+          </span>
         </label>
       `;
     }).join('');
+
+    // Render Right Column (Status Cards of checked requirements)
+    renderSelectedRequirementsStatus();
+  }
+
+  function renderSelectedRequirementsStatus() {
+    const rightContainer = document.getElementById('test-requirements-status-list');
+    if (!rightContainer) return;
+
+    const programSelect = document.getElementById('test-program-select');
+    if (!programSelect) return;
+    const programId = programSelect.value;
+    if (!programId) {
+      rightContainer.innerHTML = '';
+      return;
+    }
+
+    const programReqs = state.requirements.filter(r => r.programId === programId);
+    
+    // Filter to requirements that are checked in our temporary state
+    const checkedReqs = programReqs.filter(r => {
+      const stateObj = testModalRequirementStates[r.id];
+      return stateObj && stateObj.checked;
+    });
+
+    if (checkedReqs.length === 0) {
+      rightContainer.innerHTML = '<div style="color:var(--text-secondary); font-size:11px; text-align:center; padding:30px 10px; font-style:italic;">No requirements selected on the left</div>';
+      return;
+    }
+
+    const statusSelect = document.getElementById('test-status-select');
+    const testStatus = statusSelect ? statusSelect.value : 'Not Started';
+
+    rightContainer.innerHTML = checkedReqs.map(r => {
+      const stateObj = testModalRequirementStates[r.id];
+      const isImplemented = stateObj.implemented;
+      const compCode = r.component || 'SE';
+
+      // Derived dynamic status badge
+      let badgeHtml = '';
+      if (isImplemented) {
+        if (testStatus === 'Passed') {
+          badgeHtml = `<span class="badge badge-passed" style="font-size: 10px; padding: 3px 8px; border-radius: 6px;">✓ Verified</span>`;
+        } else if (testStatus === 'In Progress') {
+          badgeHtml = `<span class="badge" style="background-color: var(--status-pending-bg); color: var(--status-pending); border: 1px solid var(--status-pending-border); font-size: 10px; padding: 3px 8px; border-radius: 6px;">⏳ In Progress</span>`;
+        } else {
+          badgeHtml = `<span class="badge badge-not-started" style="font-size: 10px; padding: 3px 8px; border-radius: 6px;">Not Started</span>`;
+        }
+      } else {
+        badgeHtml = `<span class="badge badge-not-started" style="font-size: 10px; padding: 3px 8px; border-radius: 6px;">🔗 Not Implemented</span>`;
+      }
+
+      return `
+        <div class="test-req-status-card" data-req-id="${escapeHTML(r.id)}" style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; transition: all 0.2s ease;">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <span style="font-weight: 700; font-size: 12px; color: var(--text-primary);">${escapeHTML(r.id)}</span>
+            <span class="badge" style="background-color: var(--border-color); color: var(--text-secondary); font-size: 9px; padding: 1px 5px; font-weight: 700; border-radius: 3px;">${escapeHTML(compCode)}</span>
+          </div>
+          <div style="font-size: 11px; color: var(--text-secondary); line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; text-overflow: ellipsis;" title="${escapeHTML(r.description)}">
+            ${escapeHTML(r.description)}
+          </div>
+          <div style="display: flex; gap: 8px; justify-content: space-between; align-items: center; margin-top: 4px; border-top: 1px solid var(--border-color); padding-top: 6px;">
+            <label style="display: inline-flex; align-items: center; gap: 6px; font-size: 11px; cursor: pointer; color: var(--text-primary); font-weight: 600; margin: 0;">
+              <input type="checkbox" name="req-implemented-checkbox" data-req-id="${escapeHTML(r.id)}" ${isImplemented ? 'checked' : ''} onchange="ReqApp.onTestReqImplementedCheckboxChange(this)" style="cursor: pointer; transform: scale(1.05);">
+              Implemented
+            </label>
+            ${badgeHtml}
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  function onTestReqCheckboxChange(input) {
+    const reqId = input.value;
+    const isChecked = input.checked;
+    
+    if (testModalRequirementStates[reqId]) {
+      testModalRequirementStates[reqId].checked = isChecked;
+      
+      if (isChecked) {
+        // Default implemented to true when checked
+        testModalRequirementStates[reqId].implemented = true;
+        
+        // Auto-transition to In Progress if test is Not Started
+        const statusSelect = document.getElementById('test-status-select');
+        if (statusSelect && statusSelect.value === 'Not Started') {
+          statusSelect.value = 'In Progress';
+          updateModalPassedDateDisplay();
+        }
+      }
+    }
+
+    renderSelectedRequirementsStatus();
+  }
+
+  function onTestReqImplementedCheckboxChange(input) {
+    const reqId = input.dataset.reqId;
+    const isImplemented = input.checked;
+    if (!reqId || !testModalRequirementStates[reqId]) return;
+
+    testModalRequirementStates[reqId].implemented = isImplemented;
+
+    if (isImplemented) {
+      // Auto-transition to In Progress if test is Not Started
+      const statusSelect = document.getElementById('test-status-select');
+      if (statusSelect && statusSelect.value === 'Not Started') {
+        statusSelect.value = 'In Progress';
+        updateModalPassedDateDisplay();
+      }
+    }
+
+    renderSelectedRequirementsStatus();
   }
 
   // Filter requirements checkboxes by search term
@@ -1039,15 +1283,30 @@
         if (item && item.passedDate) {
           dateContainer.style.display = 'block';
           dateSpan.innerText = formatPassDate(item.passedDate);
-          return;
+        } else {
+          dateContainer.style.display = 'block';
+          dateSpan.innerText = '(Will be recorded on save)';
         }
+      } else {
+        dateContainer.style.display = 'block';
+        dateSpan.innerText = '(Will be recorded on save)';
       }
-      dateContainer.style.display = 'block';
-      dateSpan.innerText = '(Will be recorded on save)';
     } else {
       dateContainer.style.display = 'none';
       dateSpan.innerText = '';
     }
+
+    if (statusSelect.value === 'Not Started') {
+      // Revert all checked requirements to implemented = false
+      for (const reqId in testModalRequirementStates) {
+        if (testModalRequirementStates[reqId].checked) {
+          testModalRequirementStates[reqId].implemented = false;
+        }
+      }
+    }
+
+    // Refresh dynamic status badges and checkboxes
+    renderSelectedRequirementsStatus();
   }
 
   // Populate drop-downs inside Test modal
@@ -1584,9 +1843,19 @@
       });
     }
 
-    // Retrieve checked requirement IDs
-    const checkedCheckboxes = document.querySelectorAll('#test-requirements-checkbox-list input[type="checkbox"]:checked');
-    const requirementIds = Array.from(checkedCheckboxes).map(cb => cb.value);
+    // Retrieve checked and implemented requirement IDs from our states map
+    const requirementIds = [];
+    const implementedRequirementIds = [];
+
+    for (const reqId in testModalRequirementStates) {
+      const stateObj = testModalRequirementStates[reqId];
+      if (stateObj.checked) {
+        requirementIds.push(reqId);
+        if (stateObj.implemented) {
+          implementedRequirementIds.push(reqId);
+        }
+      }
+    }
 
     if (!editId) {
       const newId = `TEST-${Math.random().toString(36).substr(2, 5).toUpperCase()}`;
@@ -1599,6 +1868,7 @@
         programDescription,
         programId,
         requirementIds,
+        implementedRequirementIds,
         status,
         assigneeId,
         notes,
@@ -1621,6 +1891,7 @@
           programDescription,
           programId,
           requirementIds,
+          implementedRequirementIds,
           status,
           assigneeId,
           notes,
@@ -1913,6 +2184,45 @@
     } catch (e) {
       return '';
     }
+  }
+
+  // Render Verification Test links as colored status pills
+  function renderTestPills(linkedTests, reqId) {
+    if (!linkedTests || linkedTests.length === 0) return '';
+    return linkedTests.map(t => {
+      const isImplemented = !t.implementedRequirementIds || t.implementedRequirementIds.includes(reqId);
+      const isVerifying = t.status === 'Passed' && isImplemented;
+      
+      let badgeStyle = '';
+      let icon = '';
+      let titleText = `${t.name} (${t.status})`;
+      
+      if (isVerifying) {
+        badgeStyle = 'background-color: var(--status-passed-bg); color: var(--status-passed); border: 1px solid var(--status-passed-border);';
+        icon = '✓';
+        titleText += ' - Verified';
+      } else if (t.status === 'In Progress' && isImplemented) {
+        badgeStyle = 'background-color: var(--status-inprogress-bg); color: var(--status-inprogress); border: 1px solid var(--status-inprogress-border);';
+        icon = '⏳';
+        titleText += ' - In Progress';
+      } else if (isImplemented) {
+        // If the test is Not Started but implemented (should not happen with our validation, but for safety)
+        badgeStyle = 'background-color: var(--status-notstarted-bg); color: var(--status-notstarted); border: 1px solid var(--status-notstarted-border);';
+        icon = '✏️';
+        titleText += ' - Implemented (Not Started)';
+      } else {
+        badgeStyle = 'background-color: var(--status-notstarted-bg); color: var(--status-notstarted); border: 1px solid var(--status-notstarted-border);';
+        icon = '🔗';
+        titleText += ' - Not Implemented';
+      }
+      
+      return `
+        <span class="drill-link" data-test-id="${escapeHTML(t.id)}" onclick="event.stopPropagation(); ReqApp.drillTo('tests', this.dataset.testId)" title="${escapeHTML(titleText)}" style="display:inline-flex; align-items:center; gap:4px; padding:2px 6px; border-radius:4px; font-size:11px; font-weight:600; margin: 2px; ${badgeStyle}">
+          <span>${icon}</span>
+          <span>${escapeHTML(t.name)}</span>
+        </span>
+      `;
+    }).join(' ');
   }
 
   // Get details about where an inherited pass comes from
@@ -2225,12 +2535,14 @@
       return compMatch && searchMatch;
     });
 
-    // Filter Pending/In Progress Tests for selected program
+    // Filter target tests for selected program based on planningTestFilter state
     const progTests = state.tests.filter(t => t.programId === selectedProgramId);
-    const pendingTests = progTests.filter(t => t.status !== 'Passed');
+    const targetTests = planningTestFilter === 'todo'
+      ? progTests.filter(t => t.status !== 'Passed')
+      : progTests.filter(t => t.status === 'Passed');
 
-    // Filter pending tests by component and search query
-    let filteredPending = pendingTests.filter(t => {
+    // Filter target tests by component and search query
+    let filteredPending = targetTests.filter(t => {
       // Filter by component
       const compMatch = componentFilter === 'ALL' || t.component === componentFilter;
 
@@ -2248,7 +2560,8 @@
     const testedReqsCount = progReqs.filter(r => hasTests(r)).length;
     const coveragePct = totalReqsCount > 0 ? Math.round((testedReqsCount / totalReqsCount) * 100) : 0;
     
-    const backlogDaysSum = pendingTests.reduce((sum, t) => sum + (t.estimate || 0), 0);
+    const backlogTests = progTests.filter(t => t.status !== 'Passed');
+    const backlogDaysSum = backlogTests.reduce((sum, t) => sum + (t.estimate || 0), 0);
     const formattedBacklogDays = backlogDaysSum.toFixed(1).replace(/\.0$/, '');
     
     const totalTestsSum = progTests.reduce((sum, t) => sum + (t.estimate || 0), 0);
@@ -2265,8 +2578,8 @@
     if (coverageEl) coverageEl.innerText = `${coveragePct}%`;
     if (coverageSubEl) coverageSubEl.innerText = `${testedReqsCount} / ${totalReqsCount} requirements covered`;
     if (gapsEl) gapsEl.innerText = untestedReqs.length;
-    if (backlogEl) backlogEl.innerText = pendingTests.length;
-    if (backlogSubEl) backlogSubEl.innerText = `${pendingTests.length} tests (${formattedBacklogDays}d remaining)`;
+    if (backlogEl) backlogEl.innerText = backlogTests.length;
+    if (backlogSubEl) backlogSubEl.innerText = `${backlogTests.length} tests (${formattedBacklogDays}d remaining)`;
     
     if (totalTimeEl) totalTimeEl.innerText = `${totalTestsSum.toFixed(1).replace(/\.0$/, '')}d`;
     if (totalTimeSubEl) totalTimeSubEl.innerText = `${completedTestsSum.toFixed(1).replace(/\.0$/, '')}d completed / ${totalTestsSum.toFixed(1).replace(/\.0$/, '')}d total`;
@@ -2274,7 +2587,7 @@
     const untestedCountEl = document.getElementById('planning-untested-count');
     const pendingCountEl = document.getElementById('planning-pending-count');
     if (untestedCountEl) untestedCountEl.innerText = untestedReqs.length;
-    if (pendingCountEl) pendingCountEl.innerText = pendingTests.length;
+    if (pendingCountEl) pendingCountEl.innerText = targetTests.length;
 
     // Render Untested Requirements Cards
     const untestedContainer = document.getElementById('planning-untested-list');
@@ -2283,14 +2596,17 @@
         untestedContainer.innerHTML = '<div style="color:var(--text-secondary); font-size:13px; text-align:center; padding:32px; border:1px dashed var(--border-color); border-radius:8px; background-color:var(--bg-canvas);">No untested requirements match the filters.</div>';
       } else {
         untestedContainer.innerHTML = filteredUntested.map(r => `
-          <div class="backlog-card">
+          <div class="backlog-card" onclick="ReqApp.drillTo('requirements', '${escapeHTML(r.id)}')" style="cursor: pointer;">
             <div class="backlog-card-header">
               <span class="backlog-card-title">${escapeHTML(r.id)}</span>
               <span class="badge" style="background-color: var(--border-color); color: var(--text-secondary); font-size: 9px; padding: 2px 6px; font-weight: 700; border-radius: 4px;">${escapeHTML(r.component || 'SE')}</span>
             </div>
             <p class="backlog-card-desc">${escapeHTML(r.description)}</p>
-            <div class="backlog-card-footer" style="justify-content: flex-end;">
-              <button class="btn btn-primary btn-sm" data-program-id="${escapeHTML(r.programId)}" data-req-id="${escapeHTML(r.id)}" onclick="ReqApp.createTestForReq(this.dataset.programId, this.dataset.reqId)" style="font-size:11px; font-weight:700; padding: 4px 10px;">
+            <div class="backlog-card-footer" style="justify-content: flex-end; gap: 8px;">
+              <button class="btn btn-secondary btn-sm" data-req-id="${escapeHTML(r.id)}" onclick="event.stopPropagation(); ReqApp.openLinkTestModal(this.dataset.reqId)" style="font-size:11px; font-weight:700; padding: 4px 10px;">
+                🔗 Link Test
+              </button>
+              <button class="btn btn-primary btn-sm" data-program-id="${escapeHTML(r.programId)}" data-req-id="${escapeHTML(r.id)}" onclick="event.stopPropagation(); ReqApp.createTestForReq(this.dataset.programId, this.dataset.reqId)" style="font-size:11px; font-weight:700; padding: 4px 10px;">
                 + Create Test
               </button>
             </div>
@@ -2303,23 +2619,26 @@
     const pendingContainer = document.getElementById('planning-pending-list');
     if (pendingContainer) {
       if (filteredPending.length === 0) {
-        pendingContainer.innerHTML = '<div style="color:var(--text-secondary); font-size:13px; text-align:center; padding:32px; border:1px dashed var(--border-color); border-radius:8px; background-color:var(--bg-canvas);">No planned tests match the filters.</div>';
+        const emptyMessage = planningTestFilter === 'todo'
+          ? 'No planned tests match the filters.'
+          : 'No passed tests match the filters.';
+        pendingContainer.innerHTML = `<div style="color:var(--text-secondary); font-size:13px; text-align:center; padding:32px; border:1px dashed var(--border-color); border-radius:8px; background-color:var(--bg-canvas);">${emptyMessage}</div>`;
       } else {
         pendingContainer.innerHTML = filteredPending.map(t => {
           const reqsBadges = (t.requirementIds || []).map(reqId => {
             const req = state.requirements.find(r => r.id === reqId);
             const compText = req ? ` [${req.component}]` : '';
             return `
-              <span class="badge badge-pending drill-link" data-req-id="${escapeHTML(reqId)}" onclick="ReqApp.drillTo('requirements', this.dataset.reqId)" style="font-size: 9px; margin-right:2px;" title="View requirement: ${escapeHTML(reqId)}">
+              <span class="badge badge-pending drill-link" data-req-id="${escapeHTML(reqId)}" onclick="event.stopPropagation(); ReqApp.drillTo('requirements', this.dataset.reqId)" style="font-size: 9px; margin-right:2px;" title="View requirement: ${escapeHTML(reqId)}">
                 ${escapeHTML(reqId)}${compText}
               </span>
             `;
           }).join('') || '<em style="color:var(--status-failed); font-size:11px;">Unlinked</em>';
 
           return `
-            <div class="backlog-card">
+            <div class="backlog-card" onclick="ReqApp.drillTo('tests', '${escapeHTML(t.id)}')" style="cursor: pointer;">
               <div class="backlog-card-header">
-                <div class="backlog-card-title drill-link" data-test-id="${escapeHTML(t.id)}" onclick="ReqApp.drillTo('tests', this.dataset.testId)" title="View test detail">${escapeHTML(t.name)}</div>
+                <div class="backlog-card-title" title="View test detail">${escapeHTML(t.name)}</div>
                 <div style="display: flex; gap: 4px; align-items: center;">
                   <span class="badge" style="background-color: var(--border-color); color: var(--text-primary); font-size: 9px; padding: 2px 6px; font-weight:700;">${escapeHTML(t.type)}</span>
                   <span class="badge" style="background-color: var(--border-color); color: var(--text-secondary); font-size: 9px; padding: 2px 6px; font-weight:700; border-radius: 4px;">${escapeHTML(t.component || 'SE')}</span>
@@ -2350,7 +2669,7 @@
                       return `<span class="badge ${badgeClass}" style="font-size: 11px; padding: 2px 6px; font-weight: 700; cursor: help;" title="Derived from subtasks: ${escapeHTML(subList)}. Click Edit to change.">${t.status}</span>`;
                     } else {
                       return `
-                        <select class="select-filter btn-sm ${t.status === 'Passed' ? 'select-status-passed' : t.status === 'In Progress' ? 'select-status-inprogress' : 'select-status-notstarted'}" style="font-size:11px; padding:2px 8px;" data-test-id="${escapeHTML(t.id)}" onchange="ReqApp.toggleTestOutcome(this.dataset.testId, this.value)">
+                        <select class="select-filter btn-sm ${t.status === 'Passed' ? 'select-status-passed' : t.status === 'In Progress' ? 'select-status-inprogress' : 'select-status-notstarted'}" style="font-size:11px; padding:2px 8px;" data-test-id="${escapeHTML(t.id)}" onclick="event.stopPropagation()" onchange="ReqApp.toggleTestOutcome(this.dataset.testId, this.value)">
                           <option value="Not Started" ${t.status === 'Not Started' ? 'selected' : ''}>Not Started</option>
                           <option value="In Progress" ${t.status === 'In Progress' ? 'selected' : ''}>In Progress</option>
                           <option value="Passed" ${t.status === 'Passed' ? 'selected' : ''}>Passed</option>
@@ -2363,10 +2682,10 @@
                   ${(() => {
                     const assignee = t.assigneeId ? state.teamMembers.find(tm => tm.id === t.assigneeId) : null;
                     return assignee
-                      ? `<span class="assignee-avatar-badge" style="background-color: ${assignee.color};" data-test-id="${escapeHTML(t.id)}" onclick="ReqApp.openModal('test-modal', this.dataset.testId)" title="Assigned to ${escapeHTML(assignee.name)}. Click to change.">${escapeHTML(assignee.initials)}</span>`
-                      : `<span class="assignee-avatar-badge unassigned" data-test-id="${escapeHTML(t.id)}" onclick="ReqApp.openModal('test-modal', this.dataset.testId)" title="Unassigned. Click to assign.">&#128100;</span>`;
+                      ? `<span class="assignee-avatar-badge" style="background-color: ${assignee.color};" data-test-id="${escapeHTML(t.id)}" onclick="event.stopPropagation(); ReqApp.openModal('test-modal', this.dataset.testId)" title="Assigned to ${escapeHTML(assignee.name)}. Click to change.">${escapeHTML(assignee.initials)}</span>`
+                      : `<span class="assignee-avatar-badge unassigned" data-test-id="${escapeHTML(t.id)}" onclick="event.stopPropagation(); ReqApp.openModal('test-modal', this.dataset.testId)" title="Unassigned. Click to assign.">&#128100;</span>`;
                   })()}
-                  <button class="btn btn-secondary btn-sm" data-test-id="${escapeHTML(t.id)}" onclick="ReqApp.openModal('test-modal', this.dataset.testId)" style="font-size:11px; font-weight:700; padding: 4px 10px;">
+                  <button class="btn btn-secondary btn-sm" data-test-id="${escapeHTML(t.id)}" onclick="event.stopPropagation(); ReqApp.openModal('test-modal', this.dataset.testId)" style="font-size:11px; font-weight:700; padding: 4px 10px;">
                     Edit
                   </button>
                 </div>
@@ -2487,7 +2806,7 @@
           
           let testsLinks = '<em style="color:var(--status-failed);">Unlinked</em>';
           if (linkedTests.length > 0) {
-            testsLinks = linkedTests.map(t => `<span class="drill-link" data-test-id="${escapeHTML(t.id)}" onclick="ReqApp.drillTo('tests', this.dataset.testId)" title="View test: ${escapeHTML(t.name)}">${escapeHTML(t.name)}</span>`).join(', ');
+            testsLinks = renderTestPills(linkedTests, r.id);
           } else {
             const sources = getInheritedPassSource(r);
             if (sources && sources.length > 0) {
@@ -2497,9 +2816,9 @@
                   <div style="color: var(--text-secondary); font-size: 10px;">
                     ${sources.map(src => {
                       const testText = src.testName 
-                        ? `<span class="drill-link" data-test-id="${escapeHTML(src.testId)}" onclick="ReqApp.drillTo('tests', this.dataset.testId)" style="font-weight:600;">${escapeHTML(src.testName)}</span>`
+                        ? `<span class="drill-link" data-test-id="${escapeHTML(src.testId)}" onclick="event.stopPropagation(); ReqApp.drillTo('tests', this.dataset.testId)" style="font-weight:600;">${escapeHTML(src.testName)}</span>`
                         : `Req ${escapeHTML(src.requirementId)}`;
-                      const progText = `<span class="drill-link" data-program-id="${escapeHTML(src.programId)}" onclick="ReqApp.drillTo('programs', this.dataset.programId)" style="font-style: italic;">${escapeHTML(src.programName)}</span>`;
+                      const progText = `<span class="drill-link" data-program-id="${escapeHTML(src.programId)}" onclick="event.stopPropagation(); ReqApp.drillTo('programs', this.dataset.programId)" style="font-style: italic;">${escapeHTML(src.programName)}</span>`;
                       return `<div style="margin: 2px 0;">${testText}<br><span style="font-size:9px;">in ${progText}</span></div>`;
                     }).join('')}
                   </div>
@@ -2516,18 +2835,18 @@
           }
 
           return `
-            <tr>
+            <tr onclick="ReqApp.drillTo('requirements', '${escapeHTML(r.id)}')" style="cursor: pointer;">
               <td>
-                <span class="drill-link" data-req-id="${escapeHTML(r.id)}" onclick="ReqApp.drillTo('requirements', this.dataset.reqId)" title="Drill into requirement detail">${escapeHTML(r.id)}</span>
+                <span class="drill-link" data-req-id="${escapeHTML(r.id)}" onclick="event.stopPropagation(); ReqApp.drillTo('requirements', this.dataset.reqId)" title="Drill into requirement detail">${escapeHTML(r.id)}</span>
                 <span class="badge" style="background-color: var(--border-color); color: var(--text-secondary); font-size: 9px; padding: 2px 4px; margin-left: 6px; font-weight: 700; border-radius: 4px;">${escapeHTML(r.component || 'SE')}</span>
               </td>
               <td>
-                <div class="statement-cell" style="max-width: 320px;">
+                <div class="statement-cell" style="max-width: 500px;">
                   ${escapeHTML(r.description)}
                 </div>
               </td>
               <td>
-                ${cap ? `<span class="drill-link" data-cap-id="${escapeHTML(cap.id)}" onclick="ReqApp.drillTo('capabilities', this.dataset.capId)">${escapeHTML(cap.id)}</span>` : '<span style="color:var(--text-secondary); font-size:12px;">None</span>'}
+                ${cap ? `<span class="drill-link" data-cap-id="${escapeHTML(cap.id)}" onclick="event.stopPropagation(); ReqApp.drillTo('capabilities', this.dataset.capId)">${escapeHTML(cap.id)}</span>` : '<span style="color:var(--text-secondary); font-size:12px;">None</span>'}
               </td>
               <td>
                 ${testsLinks}
@@ -2688,9 +3007,9 @@
               <thead>
                 <tr>
                   <th scope="col" style="width:100px;">Req ID</th>
-                  <th scope="col">Statement</th>
-                  <th scope="col">Shared Capability</th>
-                  <th scope="col">Verification Test</th>
+                  <th scope="col" style="width:auto;">Statement</th>
+                  <th scope="col" style="width:180px;">Shared Capability</th>
+                  <th scope="col" style="width:250px;">Verification Test</th>
                   <th scope="col" style="width:110px;">Status</th>
                 </tr>
               </thead>
@@ -2709,6 +3028,16 @@
         </div>
       `;
     } else if (selectedProgramTab === 'planning') {
+      const isTodo = planningTestFilter === 'todo';
+      const headerBgColor = isTodo ? 'rgba(217, 119, 6, 0.03)' : 'rgba(16, 185, 129, 0.03)';
+      const headerBorderColor = isTodo ? 'rgba(217, 119, 6, 0.25)' : 'rgba(16, 185, 129, 0.25)';
+      const headerTextColor = isTodo ? '#D97706' : '#10B981';
+      const headerTitle = isTodo ? 'Test Backlog' : 'Passed Tests';
+      const searchPlaceholder = isTodo ? 'Search test backlog...' : 'Search passed tests...';
+      const headerIconSvg = isTodo
+        ? `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true" style="stroke: currentColor;"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>`
+        : `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true" style="stroke: currentColor;"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
+
       detailPanel.innerHTML = headerHtml + `
         <!-- Dual-Column Cockpit Layout -->
         <div class="planning-split-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; flex-grow: 1; overflow: hidden; min-height: 0;">
@@ -2731,15 +3060,21 @@
 
           <!-- Test Execution Backlog Column -->
           <div class="backlog-column-wrapper" style="display: flex; flex-direction: column; gap: 12px; height: 100%; overflow: hidden;">
-            <div class="backlog-column-header" style="background-color: rgba(217, 119, 6, 0.03); border: 1px dashed rgba(217, 119, 6, 0.25); border-radius: 8px; padding: 10px 14px; display: flex; justify-content: space-between; align-items: center; flex-shrink: 0;">
-              <h3 style="font-size: 12px; font-weight: 700; color: #D97706; display: flex; align-items: center; gap: 6px; margin: 0; text-transform: uppercase; letter-spacing: 0.5px;">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
-                <span>Test Backlog (<span id="planning-pending-count">0</span>)</span>
+            <div class="backlog-column-header" style="background-color: ${headerBgColor}; border: 1px dashed ${headerBorderColor}; border-radius: 8px; padding: 10px 14px; display: flex; justify-content: space-between; align-items: center; flex-shrink: 0;">
+              <h3 style="font-size: 12px; font-weight: 700; color: ${headerTextColor}; display: flex; align-items: center; gap: 6px; margin: 0; text-transform: uppercase; letter-spacing: 0.5px;">
+                ${headerIconSvg}
+                <span>${headerTitle} (<span id="planning-pending-count">0</span>)</span>
               </h3>
+              
+              <!-- Segmented Control for To Do vs Passed -->
+              <div style="display: flex; background: var(--border-color); border-radius: 6px; padding: 2px;">
+                <button onclick="ReqApp.togglePlanningTestFilter('todo')" id="btn-planning-tests-todo" class="btn-toggle-segmented ${isTodo ? 'active' : ''}">To Do</button>
+                <button onclick="ReqApp.togglePlanningTestFilter('passed')" id="btn-planning-tests-passed" class="btn-toggle-segmented ${!isTodo ? 'active' : ''}">Passed</button>
+              </div>
             </div>
             <div class="search-input-wrapper" style="flex: none; max-width: 100%; margin-bottom: 2px;">
               <span class="search-icon" aria-hidden="true">&#128269;</span>
-              <input type="search" class="search-input" id="search-planning-pending" placeholder="Search test backlog..." oninput="ReqApp.renderPlanning()" style="font-size:12px; padding: 6px 12px 6px 36px;">
+              <input type="search" class="search-input" id="search-planning-pending" placeholder="${searchPlaceholder}" oninput="ReqApp.renderPlanning()" style="font-size:12px; padding: 6px 12px 6px 36px;">
             </div>
             <div id="planning-pending-list" style="display: flex; flex-direction: column; gap: 10px; flex-grow: 1; overflow-y: auto; padding-right: 4px; padding-bottom: 20px;">
               <!-- Dynamically populated cards -->
@@ -2792,7 +3127,7 @@
         
         let testsLinks = '';
         if (linkedTests.length > 0) {
-          testsLinks = linkedTests.map(t => `<span class="drill-link" data-test-id="${escapeHTML(t.id)}" onclick="ReqApp.drillTo('tests', this.dataset.testId); event.stopPropagation();" title="View test: ${escapeHTML(t.name)}">${escapeHTML(t.name)} (${t.status})</span>`).join(', ');
+          testsLinks = renderTestPills(linkedTests, r.id);
         } else {
           const sources = getInheritedPassSource(r);
           if (sources && sources.length > 0) {
@@ -2894,7 +3229,7 @@
         
         let testsLinks = '';
         if (linkedTests.length > 0) {
-          testsLinks = linkedTests.map(t => `<span class="drill-link" data-test-id="${escapeHTML(t.id)}" onclick="ReqApp.drillTo('tests', this.dataset.testId); event.stopPropagation();" title="View test: ${escapeHTML(t.name)}">${escapeHTML(t.name)}</span>`).join(', ');
+          testsLinks = renderTestPills(linkedTests, r.id);
         } else {
           const sources = getInheritedPassSource(r);
           if (sources && sources.length > 0) {
@@ -3346,7 +3681,7 @@
       card.addEventListener("mouseenter", () => {
         const type = card.dataset.type;
         const id = card.dataset.id;
-        applyTraceHighlights(id, type);
+        applyTraceHighlights(id, type, card);
       });
 
       card.addEventListener("mouseleave", () => {
@@ -3646,8 +3981,19 @@
   }
 
   // Apply Trace highlights and focus-collapse unrelated columns
-  function applyTraceHighlights(id, type) {
+  function applyTraceHighlights(id, type, cardElement) {
     currentHoveredTraceNode = { id, type };
+
+    // Reset translations to measure natural positions
+    const lists = {
+      capability: document.getElementById('trace-list-capabilities'),
+      requirement: document.getElementById('trace-list-requirements'),
+      test: document.getElementById('trace-list-tests')
+    };
+    
+    Object.values(lists).forEach(list => {
+      if (list) list.style.transform = '';
+    });
 
     const { activeCaps, activeReqs, activeTests } = getActiveTraceElements(id, type);
 
@@ -3682,6 +4028,32 @@
       }
     });
 
+    // Center active elements in other columns vertically relative to the hovered card
+    if (cardElement) {
+      const graphContainer = document.getElementById('traceability-graph-container');
+      if (graphContainer) {
+        const hoveredRect = cardElement.getBoundingClientRect();
+        const hoveredCenterY = (hoveredRect.top + hoveredRect.bottom) / 2;
+
+        Object.keys(lists).forEach(colType => {
+          if (colType === type) return; // Skip the hovered column
+          const listEl = lists[colType];
+          if (!listEl) return;
+
+          const activeCards = listEl.querySelectorAll('.trace-node.active-trace');
+          if (activeCards.length > 0) {
+            const firstRect = activeCards[0].getBoundingClientRect();
+            const lastRect = activeCards[activeCards.length - 1].getBoundingClientRect();
+
+            const groupNaturalCenterY = (firstRect.top + lastRect.bottom) / 2;
+            const shiftY = hoveredCenterY - groupNaturalCenterY;
+
+            listEl.style.transform = `translateY(${shiftY}px)`;
+          }
+        });
+      }
+    }
+
     // Schedule path drawing AFTER layout shifts have occurred
     setTimeout(() => {
       drawTracePaths();
@@ -3696,6 +4068,14 @@
     allCards.forEach(c => {
       c.classList.remove("active-trace", "dimmed");
       c.style.display = "";
+    });
+
+    const colListIds = ['trace-list-capabilities', 'trace-list-requirements', 'trace-list-tests'];
+    colListIds.forEach(listId => {
+      const listEl = document.getElementById(listId);
+      if (listEl) {
+        listEl.style.transform = '';
+      }
     });
 
     // Schedule path drawing AFTER layout has expanded back to original height
@@ -4408,6 +4788,19 @@
     setRequirementsViewMode(reqViewMode);
     switchView('dashboard');
 
+    // Register popstate listener for browser navigation
+    window.addEventListener('popstate', (event) => {
+      if (event.state) {
+        applyState(event.state, false);
+      } else {
+        applyState({
+          view: 'dashboard',
+          programId: state.programs.length > 0 ? state.programs[0].id : null,
+          programTab: 'overview'
+        }, false);
+      }
+    });
+
     // Update SVG connection lines on resize
     window.addEventListener('resize', () => {
       if (currentView === 'traceability') {
@@ -4709,6 +5102,7 @@
     switchModalTab,
     switchProgramTab,
     toggleProgramDropdown,
+    togglePlanningTestFilter,
     toggleProgramsSidebar,
     saveProgram,
     deleteProgram,
@@ -4736,6 +5130,8 @@
     openLinkTestModal,
     saveLinkTest,
     populateTestRequirements,
+    onTestReqCheckboxChange,
+    onTestReqImplementedCheckboxChange,
     filterTestRequirements,
     createTestForReq,
     createRequirementForCap,

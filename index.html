@@ -626,14 +626,24 @@
 
           <!-- Tab 3: Requirements Coverage -->
           <div id="tab-content-coverage" class="modal-tab-pane" style="display: none;">
-            <div class="form-group" style="margin-bottom: 0;">
-              <label class="form-label">Passes off Requirements</label>
-              <div style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px;">
-                <input type="text" id="test-requirements-search" class="form-input" placeholder="Search requirements by ID, component, or description..." oninput="ReqApp.filterTestRequirements()">
-                <div id="test-requirements-search-stats" style="font-size: 11px; color: var(--text-secondary); font-style: italic; display: none;"></div>
+            <div style="display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 20px; height: 350px; min-height: 0;">
+              <!-- Left Column: Selection -->
+              <div style="display: flex; flex-direction: column; gap: 8px; min-height: 0; height: 100%;">
+                <label class="form-label" style="margin-bottom: 2px;">Select Requirements</label>
+                <div style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 4px;">
+                  <input type="text" id="test-requirements-search" class="form-input" placeholder="Search by ID, component, desc..." oninput="ReqApp.filterTestRequirements()">
+                  <div id="test-requirements-search-stats" style="font-size: 11px; color: var(--text-secondary); font-style: italic; display: none;"></div>
+                </div>
+                <div id="test-requirements-checkbox-list" style="flex: 1; overflow-y: auto; border:1px solid var(--border-color); border-radius:8px; padding:12px; background-color: var(--input-bg); display:flex; flex-direction:column; gap:6px;">
+                  <!-- Populated dynamically -->
+                </div>
               </div>
-              <div id="test-requirements-checkbox-list" style="max-height: 250px; overflow-y: auto; border:1px solid var(--border-color); border-radius:8px; padding:12px; background-color: var(--input-bg); display:flex; flex-direction:column; gap:6px;">
-                <!-- Populated dynamically -->
+              <!-- Right Column: Verification Status -->
+              <div style="display: flex; flex-direction: column; gap: 8px; min-height: 0; height: 100%;">
+                <label class="form-label" style="margin-bottom: 2px;">Requirement Status Details</label>
+                <div id="test-requirements-status-list" style="flex: 1; overflow-y: auto; border:1px solid var(--border-color); border-radius:8px; padding:12px; background-color: var(--bg-canvas); display:flex; flex-direction:column; gap:8px;">
+                  <!-- Populated dynamically -->
+                </div>
               </div>
             </div>
           </div>

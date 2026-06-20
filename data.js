@@ -178,19 +178,34 @@
 
       // Calculate base status (status purely from tests)
       if (linkedTests.length > 0) {
-        const statuses = linkedTests.map(t => t.status);
-        if (statuses.includes('Passed')) {
+        // Filter to tests that successfully verified this requirement
+        const verifyingTests = linkedTests.filter(t => {
+          if (t.status !== 'Passed') return false;
+          // Requirement must be implemented in the test
+          const isImplemented = !t.implementedRequirementIds || t.implementedRequirementIds.includes(req.id);
+          return isImplemented;
+        });
+
+        // Filter to tests that are in progress for this requirement
+        const inProgressTests = linkedTests.filter(t => {
+          if (t.status !== 'In Progress') return false;
+          // Requirement must be implemented in the test
+          const isImplemented = !t.implementedRequirementIds || t.implementedRequirementIds.includes(req.id);
+          return isImplemented;
+        });
+
+        if (verifyingTests.length > 0) {
           req.baseStatus = 'Passed';
-          const passedNames = linkedTests.filter(t => t.status === 'Passed').map(t => t.name);
+          const passedNames = verifyingTests.map(t => t.name);
           req.baseStatusReason = `Passed by verification test(s): ${passedNames.join(', ')}`;
-        } else if (statuses.includes('In Progress')) {
+        } else if (inProgressTests.length > 0) {
           req.baseStatus = 'In Progress';
-          const ipNames = linkedTests.filter(t => t.status === 'In Progress').map(t => t.name);
+          const ipNames = inProgressTests.map(t => t.name);
           req.baseStatusReason = `In progress via test(s): ${ipNames.join(', ')}`;
         } else {
           req.baseStatus = 'Not Started';
-          const nsNames = linkedTests.filter(t => t.status === 'Not Started').map(t => t.name);
-          req.baseStatusReason = `Not started via test(s): ${nsNames.join(', ')}`;
+          const nsNames = linkedTests.map(t => t.name);
+          req.baseStatusReason = `Linked to test(s) but not verified: ${nsNames.join(', ')}`;
         }
       } else {
         req.baseStatus = 'Not Started';
