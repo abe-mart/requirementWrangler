@@ -1026,7 +1026,7 @@
     const editingTest = editId ? state.tests.find(t => t.id === editId) : null;
     const checkedIds = editingTest ? (editingTest.requirementIds || []) : [];
     const implementedIds = editingTest 
-      ? (editingTest.implementedRequirementIds || (editingTest.status === 'Passed' ? checkedIds : []))
+      ? (editingTest.implementedRequirementIds || checkedIds)
       : [];
 
     // Initialize testModalRequirementStates for all program requirements
