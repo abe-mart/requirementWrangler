@@ -14,6 +14,8 @@
   // Traceability page states
   let traceabilityData = { caps: [], reqs: [], tests: [] };
   let currentHoveredTraceNode = null;
+  let frozenTraceNode = null;
+  let isKpiPanelCollapsed = localStorage.getItem('kpi_panel_collapsed') === 'true';
 
   // Shared database sync states
   let sharedFileHandle = null;
@@ -946,6 +948,12 @@
     }
   }
 
+  function toggleKpiPanel() {
+    isKpiPanelCollapsed = !isKpiPanelCollapsed;
+    localStorage.setItem('kpi_panel_collapsed', isKpiPanelCollapsed);
+    renderPrograms();
+  }
+
   function switchModalTab(tabId) {
     const panes = document.querySelectorAll('#test-modal .modal-tab-pane');
     panes.forEach(pane => {
@@ -1113,7 +1121,7 @@
             <span style="font-weight: 700; font-size: 12px; color: var(--text-primary);">${escapeHTML(r.id)}</span>
             <span class="badge" style="background-color: var(--border-color); color: var(--text-secondary); font-size: 9px; padding: 1px 5px; font-weight: 700; border-radius: 3px;">${escapeHTML(compCode)}</span>
           </div>
-          <div style="font-size: 11px; color: var(--text-secondary); line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; text-overflow: ellipsis;" title="${escapeHTML(r.description)}">
+          <div style="font-size: 11px; color: var(--text-secondary); line-height: 1.4; word-break: break-word; white-space: normal;">
             ${escapeHTML(r.description)}
           </div>
           <div style="display: flex; gap: 8px; justify-content: space-between; align-items: center; margin-top: 4px; border-top: 1px solid var(--border-color); padding-top: 6px;">
@@ -1136,15 +1144,8 @@
       testModalRequirementStates[reqId].checked = isChecked;
       
       if (isChecked) {
-        // Default implemented to true when checked
-        testModalRequirementStates[reqId].implemented = true;
-        
-        // Auto-transition to In Progress if test is Not Started
-        const statusSelect = document.getElementById('test-status-select');
-        if (statusSelect && statusSelect.value === 'Not Started') {
-          statusSelect.value = 'In Progress';
-          updateModalPassedDateDisplay();
-        }
+        // Default implemented to false when checked
+        testModalRequirementStates[reqId].implemented = false;
       }
     }
 
@@ -2449,7 +2450,7 @@
           const pct = reqCount > 0 ? Math.round((reqPassed / reqCount) * 100) : 0;
           
           const unlinkedCount = progReqs.filter(r => 
-            !state.tests.some(t => t.programId === r.programId && t.requirementIds && t.requirementIds.includes(r.id))
+            !(state.tests.some(t => t.programId === r.programId && t.requirementIds && t.requirementIds.includes(r.id)) || (r.inheritPassFromCapability && r.capabilityId))
           ).length;
           const unwrittenCount = state.tests.filter(t => t.programId === prog.id && t.status === 'Not Started').length;
 
@@ -2516,12 +2517,16 @@
     // 1. Requirements for selected program
     const progReqs = state.requirements.filter(r => r.programId === selectedProgramId);
     
-    // Helper to determine if a requirement has tests
-    const hasTests = r => state.tests.some(t => 
-      t.programId === r.programId && 
-      t.requirementIds && 
-      t.requirementIds.includes(r.id)
-    );
+    // Helper to determine if a requirement has tests (either local or inherited)
+    const hasTests = r => {
+      const hasLocalTests = state.tests.some(t => 
+        t.programId === r.programId && 
+        t.requirementIds && 
+        t.requirementIds.includes(r.id)
+      );
+      const hasInheritedTests = r.inheritPassFromCapability && r.capabilityId;
+      return hasLocalTests || hasInheritedTests;
+    };
 
     // Filter Untested Requirements (Gaps)
     const untestedReqs = progReqs.filter(r => !hasTests(r));
@@ -2727,7 +2732,7 @@
       const pct = totalCount > 0 ? Math.round((passedCount / totalCount) * 100) : 0;
       
       const unlinkedCount = progReqs.filter(r => 
-        !state.tests.some(t => t.programId === r.programId && t.requirementIds && t.requirementIds.includes(r.id))
+        !(state.tests.some(t => t.programId === r.programId && t.requirementIds && t.requirementIds.includes(r.id)) || (r.inheritPassFromCapability && r.capabilityId))
       ).length;
       const unwrittenCount = state.tests.filter(t => t.programId === p.id && t.status === 'Not Started').length;
 
@@ -2774,11 +2779,15 @@
     const totalCount = progReqs.length;
     const pct = totalCount > 0 ? Math.round((passedCount / totalCount) * 100) : 0;
 
-    const hasTests = r => state.tests.some(t => 
-      t.programId === r.programId && 
-      t.requirementIds && 
-      t.requirementIds.includes(r.id)
-    );
+    const hasTests = r => {
+      const hasLocalTests = state.tests.some(t => 
+        t.programId === r.programId && 
+        t.requirementIds && 
+        t.requirementIds.includes(r.id)
+      );
+      const hasInheritedTests = r.inheritPassFromCapability && r.capabilityId;
+      return hasLocalTests || hasInheritedTests;
+    };
     const testedReqsCount = progReqs.filter(r => hasTests(r)).length;
     const coveragePct = totalCount > 0 ? Math.round((testedReqsCount / totalCount) * 100) : 0;
 
@@ -2793,69 +2802,96 @@
     const formattedBacklogDays = backlogDaysSum.toFixed(1).replace(/\.0$/, '');
 
     // Group requirements by status
-    const reqsTableRows = progReqs.length > 0 
-      ? progReqs.map(r => {
-          const cap = state.capabilities.find(c => c.id === r.capabilityId);
-          
-          // Find tests in the same program linking to this requirement
-          const linkedTests = state.tests.filter(t => 
-            t.programId === r.programId && 
-            t.requirementIds && 
-            t.requirementIds.includes(r.id)
-          );
-          
-          let testsLinks = '<em style="color:var(--status-failed);">Unlinked</em>';
-          if (linkedTests.length > 0) {
-            testsLinks = renderTestPills(linkedTests, r.id);
-          } else {
-            const sources = getInheritedPassSource(r);
-            if (sources && sources.length > 0) {
-              testsLinks = `
-                <div style="font-size: 11px; line-height: 1.3; background: var(--status-inherited-bg); border: 1px solid var(--status-inherited-border); border-radius: 6px; padding: 4px 8px; margin-top: 2px;">
-                  <span style="color: var(--status-inherited); font-weight: 700; font-size: 9px; text-transform: uppercase; display: block; margin-bottom: 2px;">Inherited Pass</span>
-                  <div style="color: var(--text-secondary); font-size: 10px;">
-                    ${sources.map(src => {
-                      const testText = src.testName 
-                        ? `<span class="drill-link" data-test-id="${escapeHTML(src.testId)}" onclick="event.stopPropagation(); ReqApp.drillTo('tests', this.dataset.testId)" style="font-weight:600;">${escapeHTML(src.testName)}</span>`
-                        : `Req ${escapeHTML(src.requirementId)}`;
-                      const progText = `<span class="drill-link" data-program-id="${escapeHTML(src.programId)}" onclick="event.stopPropagation(); ReqApp.drillTo('programs', this.dataset.programId)" style="font-style: italic;">${escapeHTML(src.programName)}</span>`;
-                      return `<div style="margin: 2px 0;">${testText}<br><span style="font-size:9px;">in ${progText}</span></div>`;
-                    }).join('')}
-                  </div>
-                </div>
-              `;
-            }
-          }
-          
-          let badgeClass = 'badge-not-started';
-          if (r.status === 'Passed') {
-            badgeClass = r.inheritPassFromCapability && r.baseStatus !== 'Passed' ? 'badge-inherited' : 'badge-passed';
-          } else if (r.status === 'In Progress') {
-            badgeClass = 'badge-in-progress';
-          }
+    const passedReqs = progReqs.filter(r => r.status === 'Passed');
+    const pendingReqs = progReqs.filter(r => r.status !== 'Passed');
 
-          return `
-            <tr onclick="ReqApp.drillTo('requirements', '${escapeHTML(r.id)}')" style="cursor: pointer;">
-              <td>
-                <span class="drill-link" data-req-id="${escapeHTML(r.id)}" onclick="event.stopPropagation(); ReqApp.drillTo('requirements', this.dataset.reqId)" title="Drill into requirement detail">${escapeHTML(r.id)}</span>
-                <span class="badge" style="background-color: var(--border-color); color: var(--text-secondary); font-size: 9px; padding: 2px 4px; margin-left: 6px; font-weight: 700; border-radius: 4px;">${escapeHTML(r.component || 'SE')}</span>
-              </td>
-              <td>
-                <div class="statement-cell" style="max-width: 500px;">
-                  ${escapeHTML(r.description)}
-                </div>
-              </td>
-              <td>
-                ${cap ? `<span class="drill-link" data-cap-id="${escapeHTML(cap.id)}" onclick="event.stopPropagation(); ReqApp.drillTo('capabilities', this.dataset.capId)">${escapeHTML(cap.id)}</span>` : '<span style="color:var(--text-secondary); font-size:12px;">None</span>'}
-              </td>
-              <td>
-                ${testsLinks}
-              </td>
-              <td><span class="badge ${badgeClass}">${escapeHTML(r.status)}</span></td>
-            </tr>
+    const renderReqRow = r => {
+      const cap = state.capabilities.find(c => c.id === r.capabilityId);
+      
+      // Find tests in the same program linking to this requirement
+      const linkedTests = state.tests.filter(t => 
+        t.programId === r.programId && 
+        t.requirementIds && 
+        t.requirementIds.includes(r.id)
+      );
+      
+      let testsLinks = '<em style="color:var(--status-failed);">Unlinked</em>';
+      if (linkedTests.length > 0) {
+        testsLinks = renderTestPills(linkedTests, r.id);
+      } else {
+        const sources = getInheritedPassSource(r);
+        if (sources && sources.length > 0) {
+          testsLinks = `
+            <div style="font-size: 11px; line-height: 1.3; background: var(--status-inherited-bg); border: 1px solid var(--status-inherited-border); border-radius: 6px; padding: 4px 8px; margin-top: 2px;">
+              <span style="color: var(--status-inherited); font-weight: 700; font-size: 9px; text-transform: uppercase; display: block; margin-bottom: 2px;">Inherited Pass</span>
+              <div style="color: var(--text-secondary); font-size: 10px;">
+                ${sources.map(src => {
+                  const testText = src.testName 
+                    ? `<span class="drill-link" data-test-id="${escapeHTML(src.testId)}" onclick="event.stopPropagation(); ReqApp.drillTo('tests', this.dataset.testId)" style="font-weight:600;">${escapeHTML(src.testName)}</span>`
+                    : `Req ${escapeHTML(src.requirementId)}`;
+                  const progText = `<span class="drill-link" data-program-id="${escapeHTML(src.programId)}" onclick="event.stopPropagation(); ReqApp.drillTo('programs', this.dataset.programId)" style="font-style: italic;">${escapeHTML(src.programName)}</span>`;
+                  return `<div style="margin: 2px 0;">${testText}<br><span style="font-size:9px;">in ${progText}</span></div>`;
+                }).join('')}
+              </div>
+            </div>
           `;
-        }).join('')
-      : `<tr><td colspan="5" style="text-align:center; padding: 24px; color:var(--text-secondary);">No requirements linked to this program yet.</td></tr>`;
+        }
+      }
+      
+      let badgeClass = 'badge-not-started';
+      if (r.status === 'Passed') {
+        badgeClass = r.inheritPassFromCapability && r.baseStatus !== 'Passed' ? 'badge-inherited' : 'badge-passed';
+      } else if (r.status === 'In Progress') {
+        badgeClass = 'badge-in-progress';
+      }
+
+      return `
+        <tr onclick="ReqApp.drillTo('requirements', '${escapeHTML(r.id)}')" style="cursor: pointer;">
+          <td>
+            <span class="drill-link" data-req-id="${escapeHTML(r.id)}" onclick="event.stopPropagation(); ReqApp.drillTo('requirements', this.dataset.reqId)" title="Drill into requirement detail">${escapeHTML(r.id)}</span>
+            <span class="badge" style="background-color: var(--border-color); color: var(--text-secondary); font-size: 9px; padding: 2px 4px; margin-left: 6px; font-weight: 700; border-radius: 4px;">${escapeHTML(r.component || 'SE')}</span>
+          </td>
+          <td>
+            <div class="statement-cell">
+              ${escapeHTML(r.description)}
+            </div>
+          </td>
+          <td>
+            ${cap ? `<span class="drill-link" data-cap-id="${escapeHTML(cap.id)}" onclick="event.stopPropagation(); ReqApp.drillTo('capabilities', this.dataset.capId)">${escapeHTML(cap.id)}</span>` : '<span style="color:var(--text-secondary); font-size:12px;">None</span>'}
+          </td>
+          <td>
+            ${testsLinks}
+          </td>
+          <td><span class="badge ${badgeClass}">${escapeHTML(r.status)}</span></td>
+        </tr>
+      `;
+    };
+
+    let reqsTableRows = '';
+    if (progReqs.length === 0) {
+      reqsTableRows = `<tr><td colspan="5" style="text-align:center; padding: 24px; color:var(--text-secondary);">No requirements linked to this program yet.</td></tr>`;
+    } else {
+      if (pendingReqs.length > 0) {
+        reqsTableRows += `
+          <tr class="table-group-header">
+            <td colspan="5" style="background-color: var(--tr-hover); font-weight: 700; font-size: 11px; text-transform: uppercase; color: var(--status-pending); padding: 8px 12px; border-bottom: 1px solid var(--border-color); letter-spacing: 0.5px;">
+              ⏳ Active & Pending Verification (${pendingReqs.length})
+            </td>
+          </tr>
+          ${pendingReqs.map(renderReqRow).join('')}
+        `;
+      }
+      if (passedReqs.length > 0) {
+        reqsTableRows += `
+          <tr class="table-group-header">
+            <td colspan="5" style="background-color: var(--tr-hover); font-weight: 700; font-size: 11px; text-transform: uppercase; color: var(--status-passed); padding: 8px 12px; border-bottom: 1px solid var(--border-color); letter-spacing: 0.5px;">
+              ✓ Verified Requirements (${passedReqs.length})
+            </td>
+          </tr>
+          ${passedReqs.map(renderReqRow).join('')}
+        `;
+      }
+    }
 
     // Render capability summaries linked to this program
     const uniqueCaps = [];
@@ -2887,54 +2923,35 @@
 
     const headerHtml = `
       <div style="display:flex; justify-content:space-between; align-items:center; border-bottom: 1px solid var(--border-color); padding-bottom:16px; flex-shrink:0; gap:16px; flex-wrap:nowrap;">
-        <div style="display:flex; align-items:center; gap:16px; flex-wrap:wrap; flex-grow:1; min-width:0;">
-          <div style="display:flex; align-items:center; gap:12px; flex-shrink:0;">
-            <!-- Toggle Sidebar Button -->
-            <button class="btn btn-secondary btn-sm" onclick="ReqApp.toggleProgramsSidebar()" style="padding: 6px; display: inline-flex; align-items: center; justify-content: center; height: 32px; width: 32px; flex-shrink: 0;" title="Toggle Programs List Sidebar">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-                <line x1="9" y1="3" x2="9" y2="21"></line>
-              </svg>
-            </button>
-            <div style="min-width:0; max-width:220px;">
-              <h2 style="font-family:'Outfit', sans-serif; font-size:22px; font-weight:800; margin:0; line-height:1.2; white-space:nowrap; text-overflow:ellipsis; overflow:hidden;" title="${escapeHTML(prog.name)}">${escapeHTML(prog.name)}</h2>
-              <span style="font-size:11px; color:var(--text-secondary); font-weight:600; text-transform:uppercase; letter-spacing:0.5px;">ID: ${escapeHTML(prog.id)}</span>
-            </div>
-          </div>
-          
-          <!-- Compact Metric Cards -->
-          <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-            <!-- 1. Requirements Coverage -->
-            <div class="header-metric-card ${coveragePct === 100 ? 'coverage-full' : 'coverage-partial'}" title="${testedReqsCount} / ${totalCount} requirements covered by tests">
-              <span class="card-label">Coverage:</span>
-              <span class="card-value">${coveragePct}%</span>
-              <span class="card-subtext">(${testedReqsCount}/${totalCount})</span>
-            </div>
-
-            <!-- 2. Verification Gaps -->
-            <div onclick="ReqApp.switchProgramTab('planning')" class="header-metric-card clickable-header-card ${unlinkedReqs.length > 0 ? 'gaps-warning' : 'no-gaps'}" title="${unlinkedReqs.length > 0 ? `${unlinkedReqs.length} requirements lack verification tests. Click to open Planning Workbench.` : 'All requirements covered!'}">
-              <span class="card-label">Gaps:</span>
-              <span class="card-value">${unlinkedReqs.length}</span>
-              <span class="card-subtext">${unlinkedReqs.length > 0 ? '(Triage)' : '(All covered)'}</span>
-            </div>
-
-            <!-- 3. Planned Backlog -->
-            <div onclick="ReqApp.switchProgramTab('planning')" class="header-metric-card clickable-header-card ${unwrittenTests.length > 0 ? 'backlog-warning' : 'no-gaps'}" title="${unwrittenTests.length > 0 ? `${unwrittenTests.length} tests in backlog. Click to open Planning Workbench.` : 'No backlog!'}">
-              <span class="card-label">Backlog:</span>
-              <span class="card-value">${unwrittenTests.length}</span>
-              <span class="card-subtext">${unwrittenTests.length > 0 ? '(Planned)' : '(All started)'}</span>
-            </div>
-
-            <!-- 4. Effort -->
-            <div class="header-metric-card effort-neutral" title="${completedTestsSum.toFixed(1).replace(/\.0$/, '')}d completed / ${totalTestsSum.toFixed(1).replace(/\.0$/, '')}d total estimated effort">
-              <span class="card-label">Effort:</span>
-              <span class="card-value">${totalTestsSum.toFixed(1).replace(/\.0$/, '')}d</span>
-              <span class="card-subtext">(${completedTestsSum.toFixed(1).replace(/\.0$/, '')}d done)</span>
-            </div>
+        <div style="display:flex; align-items:center; gap:12px; flex-shrink:0; min-width:0;">
+          <!-- Toggle Sidebar Button -->
+          <button class="btn btn-secondary btn-sm" onclick="ReqApp.toggleProgramsSidebar()" style="padding: 6px; display: inline-flex; align-items: center; justify-content: center; height: 32px; width: 32px; flex-shrink: 0;" title="Toggle Programs List Sidebar">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+              <line x1="9" y1="3" x2="9" y2="21"></line>
+            </svg>
+          </button>
+          <div style="min-width:0; max-width:400px;">
+            <h2 style="font-family:'Outfit', sans-serif; font-size:22px; font-weight:800; margin:0; line-height:1.2; white-space:nowrap; text-overflow:ellipsis; overflow:hidden;" title="${escapeHTML(prog.name)}">${escapeHTML(prog.name)}</h2>
+            <span style="font-size:11px; color:var(--text-secondary); font-weight:600; text-transform:uppercase; letter-spacing:0.5px;">ID: ${escapeHTML(prog.id)}</span>
           </div>
         </div>
         
         <div style="display:flex; gap:8px; align-items:center; flex-shrink:0;">
+          <button class="btn btn-secondary btn-sm" onclick="ReqApp.toggleKpiPanel()" style="display:inline-flex; align-items:center; gap:6px; height:32px; padding:0 10px;" title="${isKpiPanelCollapsed ? 'Show KPI Metrics' : 'Hide KPI Metrics'}">
+            ${isKpiPanelCollapsed ? `
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+              <span>Show Metrics</span>
+            ` : `
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <polyline points="18 15 12 9 6 15"></polyline>
+              </svg>
+              <span>Hide Metrics</span>
+            `}
+          </button>
+
           <button class="btn btn-primary btn-sm" data-program-id="${escapeHTML(prog.id)}" onclick="ReqApp.printProgramReport(this.dataset.programId)" style="display:inline-flex; align-items:center; gap:6px; height:32px; padding:0 12px;" title="Print Program Status Report to PDF">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <polyline points="6 9 6 2 18 2 18 9"></polyline>
@@ -2963,6 +2980,74 @@
                 Delete Program
               </button>
             </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- New row of KPI Cards -->
+      <div class="program-kpi-grid" style="${isKpiPanelCollapsed ? 'display:none;' : ''}">
+        <!-- 1. Requirements Tested -->
+        <div class="kpi-card ${coveragePct === 100 ? 'kpi-passed' : 'kpi-neutral'}" title="${testedReqsCount} / ${totalCount} requirements covered by tests">
+          <div class="kpi-card-content">
+            <span class="kpi-card-label">Requirements Tested</span>
+            <span class="kpi-card-value">${coveragePct}%</span>
+            <span class="kpi-card-subtext">${testedReqsCount} of ${totalCount} requirements covered</span>
+          </div>
+          <div class="kpi-icon-container">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+              <polyline points="22 4 12 14.01 9 11.01"></polyline>
+            </svg>
+          </div>
+        </div>
+
+        <!-- 2. Requirements without Tests -->
+        <div onclick="ReqApp.switchProgramTab('planning')" class="kpi-card clickable ${unlinkedReqs.length > 0 ? 'kpi-failed' : 'kpi-passed'}" title="Click to open Planning Workbench">
+          <div class="kpi-card-content">
+            <span class="kpi-card-label">Requirements without Tests</span>
+            <span class="kpi-card-value">${unlinkedReqs.length}</span>
+            <span class="kpi-card-subtext">${unlinkedReqs.length > 0 ? `${unlinkedReqs.length} gaps to resolve in workbench` : 'All requirements have associated tests'}</span>
+          </div>
+          <div class="kpi-icon-container">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+              <line x1="12" y1="9" x2="12" y2="13"></line>
+              <line x1="12" y1="17" x2="12.01" y2="17"></line>
+            </svg>
+          </div>
+        </div>
+
+        <!-- 3. Uncompleted Tests -->
+        <div onclick="ReqApp.switchProgramTab('planning')" class="kpi-card clickable ${pendingTests.length > 0 ? 'kpi-warning' : 'kpi-passed'}" title="Click to open Planning Workbench">
+          <div class="kpi-card-content">
+            <span class="kpi-card-label">Uncompleted Tests</span>
+            <span class="kpi-card-value">${pendingTests.length}</span>
+            <span class="kpi-card-subtext">${pendingTests.length > 0 ? `${pendingTests.length} tests pending completion` : 'All tests completed successfully'}</span>
+          </div>
+          <div class="kpi-icon-container">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="8" y1="6" x2="21" y2="6"></line>
+              <line x1="8" y1="12" x2="21" y2="12"></line>
+              <line x1="8" y1="18" x2="21" y2="18"></line>
+              <line x1="3" y1="6" x2="3.01" y2="6"></line>
+              <line x1="3" y1="12" x2="3.01" y2="12"></line>
+              <line x1="3" y1="18" x2="3.01" y2="18"></line>
+            </svg>
+          </div>
+        </div>
+
+        <!-- 4. Effort Remaining -->
+        <div class="kpi-card kpi-neutral" title="Total estimate of uncompleted tests">
+          <div class="kpi-card-content">
+            <span class="kpi-card-label">Effort Remaining</span>
+            <span class="kpi-card-value">${backlogDaysSum.toFixed(1).replace(/\.0$/, '')}d</span>
+            <span class="kpi-card-subtext">Out of ${totalTestsSum.toFixed(1).replace(/\.0$/, '')}d total (${completedTestsSum.toFixed(1).replace(/\.0$/, '')}d done)</span>
+          </div>
+          <div class="kpi-icon-container">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
           </div>
         </div>
       </div>
@@ -3562,6 +3647,7 @@
 
   // RENDER: TRACEABILITY VIEW (Interactive visual network column layout)
   function renderTraceability() {
+    frozenTraceNode = null;
     populateTraceabilityFilters();
 
     const progSelect = document.getElementById('traceability-program-select');
@@ -3613,7 +3699,7 @@
       capListContainer.innerHTML = filteredCaps.map(c => {
         const badgeClass = c.status === 'Passed' ? 'badge-passed' : c.status === 'In Progress' ? 'badge-in-progress' : 'badge-not-started';
         return `
-          <div class="trace-node" id="trace-node-cap-${escapeHTML(c.id)}" onclick="ReqApp.openModal('capability-modal', this.dataset.id)" data-type="capability" data-id="${escapeHTML(c.id)}">
+          <div class="trace-node" id="trace-node-cap-${escapeHTML(c.id)}" onclick="ReqApp.handleTraceNodeClick(this, event)" data-type="capability" data-id="${escapeHTML(c.id)}">
             <div style="font-weight:700; font-size:13px; color:var(--text-primary);">${escapeHTML(c.id)}</div>
             <div style="font-size:11px; color:var(--text-secondary); margin-top:4px; text-overflow:ellipsis; overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; max-height:32px;">${escapeHTML(c.description || 'No description.')}</div>
             <div style="margin-top:8px; display:flex; justify-content:space-between; align-items:center;">
@@ -3632,7 +3718,7 @@
       const statusLabel = isInherited ? 'PASSED (INHERITED)' : r.status;
 
       return `
-        <div class="trace-node" id="trace-node-req-${escapeHTML(r.id)}" onclick="ReqApp.openModal('requirement-modal', this.dataset.id)" data-type="requirement" data-id="${escapeHTML(r.id)}">
+        <div class="trace-node" id="trace-node-req-${escapeHTML(r.id)}" onclick="ReqApp.handleTraceNodeClick(this, event)" data-type="requirement" data-id="${escapeHTML(r.id)}">
           <div style="display:flex; justify-content:space-between; align-items:center;">
             <span style="font-weight:700; font-size:13px; color:var(--text-primary);">${escapeHTML(r.id)}</span>
             <span class="badge" style="background-color: var(--border-color); color: var(--text-secondary); font-size: 9px; padding: 2px 4px; font-weight: 700; border-radius: 4px;">${escapeHTML(r.component || 'SE')}</span>
@@ -3656,7 +3742,7 @@
           ? `<span style="font-size:9px; color:var(--text-secondary);">📅 ${formatPassDate(t.passedDate)}</span>` 
           : '';
         return `
-          <div class="trace-node" id="trace-node-test-${escapeHTML(t.id)}" onclick="ReqApp.openModal('test-modal', this.dataset.id)" data-type="test" data-id="${escapeHTML(t.id)}">
+          <div class="trace-node" id="trace-node-test-${escapeHTML(t.id)}" onclick="ReqApp.handleTraceNodeClick(this, event)" data-type="test" data-id="${escapeHTML(t.id)}">
             <div style="font-weight:700; font-size:13px; color:var(--text-primary);">${escapeHTML(t.name)}</div>
             <div style="font-size:11px; color:var(--text-secondary); margin-top:4px;">ID: ${escapeHTML(t.id)} &middot; ${escapeHTML(t.type)}</div>
             <div style="margin-top:8px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:4px;">
@@ -3679,13 +3765,16 @@
     const allCards = document.querySelectorAll(".trace-node");
     allCards.forEach(card => {
       card.addEventListener("mouseenter", () => {
-        const type = card.dataset.type;
-        const id = card.dataset.id;
-        applyTraceHighlights(id, type, card);
+        if (!frozenTraceNode) {
+          const type = card.dataset.type;
+          const id = card.dataset.id;
+          applyTraceHighlights(id, type, card);
+        }
       });
-
       card.addEventListener("mouseleave", () => {
-        clearTraceHighlights();
+        if (!frozenTraceNode) {
+          clearTraceHighlights();
+        }
       });
     });
 
@@ -3695,121 +3784,6 @@
     }, 100);
   }
 
-  // Draw trace connections SVG paths
-  function drawTracePaths() {
-    const svgElement = document.getElementById('traceability-svg');
-    const graphContainer = document.getElementById('traceability-graph-container');
-    if (!svgElement || !graphContainer) return;
-
-    // Clear SVG viewport
-    svgElement.innerHTML = '';
-
-    // Set SVG size explicitly to match container scroll size
-    svgElement.style.width = graphContainer.scrollWidth + 'px';
-    svgElement.style.height = graphContainer.scrollHeight + 'px';
-
-    const containerRect = graphContainer.getBoundingClientRect();
-    const svgRect = svgElement.getBoundingClientRect();
-    const offsetX = containerRect.left - svgRect.left;
-    const offsetY = containerRect.top - svgRect.top;
-
-    const { caps, reqs, tests } = traceabilityData;
-
-    // Get active elements if currently hovering
-    let activeCaps = new Set();
-    let activeReqs = new Set();
-    let activeTests = new Set();
-    if (currentHoveredTraceNode) {
-      const activeData = getActiveTraceElements(currentHoveredTraceNode.id, currentHoveredTraceNode.type);
-      activeCaps = activeData.activeCaps;
-      activeReqs = activeData.activeReqs;
-      activeTests = activeData.activeTests;
-    }
-
-    // Capability -> Requirement paths
-    caps.forEach(c => {
-      const capCard = document.getElementById(`trace-node-cap-${c.id}`);
-      if (!capCard || capCard.style.display === 'none') return;
-      const capRect = capCard.getBoundingClientRect();
-
-      const linkedReqs = reqs.filter(r => r.capabilityId === c.id);
-
-      linkedReqs.forEach(r => {
-        const reqCard = document.getElementById(`trace-node-req-${r.id}`);
-        if (!reqCard || reqCard.style.display === 'none') return;
-        const reqRect = reqCard.getBoundingClientRect();
-
-        const x1 = capRect.right - containerRect.left + offsetX;
-        const y1 = capRect.top + capRect.height / 2 - containerRect.top + offsetY;
-        const x2 = reqRect.left - containerRect.left + offsetX;
-        const y2 = reqRect.top + reqRect.height / 2 - containerRect.top + offsetY;
-
-        const cp1x = x1 + (x2 - x1) * 0.45;
-        const cp1y = y1;
-        const cp2x = x1 + (x2 - x1) * 0.55;
-        const cp2y = y2;
-
-        const pathD = `M ${x1} ${y1} C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${x2} ${y2}`;
-
-        const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-        path.setAttribute("d", pathD);
-        
-        let pathClass = "trace-path";
-        if (currentHoveredTraceNode) {
-          const isPathActive = activeCaps.has(c.id) && activeReqs.has(r.id);
-          pathClass += isPathActive ? " highlighted" : " dimmed";
-        }
-        path.setAttribute("class", pathClass);
-        path.dataset.cap = c.id;
-        path.dataset.req = r.id;
-
-        svgElement.appendChild(path);
-      });
-    });
-
-    // Requirement -> Test paths
-    reqs.forEach(r => {
-      const reqCard = document.getElementById(`trace-node-req-${r.id}`);
-      if (!reqCard || reqCard.style.display === 'none') return;
-      const reqRect = reqCard.getBoundingClientRect();
-
-      const linkedTests = tests.filter(t => t.requirementIds && t.requirementIds.includes(r.id));
-
-      linkedTests.forEach(t => {
-        const testCard = document.getElementById(`trace-node-test-${t.id}`);
-        if (!testCard || testCard.style.display === 'none') return;
-        const testRect = testCard.getBoundingClientRect();
-
-        const x1 = reqRect.right - containerRect.left + offsetX;
-        const y1 = reqRect.top + reqRect.height / 2 - containerRect.top + offsetY;
-        const x2 = testRect.left - containerRect.left + offsetX;
-        const y2 = testRect.top + testRect.height / 2 - containerRect.top + offsetY;
-
-        const cp1x = x1 + (x2 - x1) * 0.45;
-        const cp1y = y1;
-        const cp2x = x1 + (x2 - x1) * 0.55;
-        const cp2y = y2;
-
-        const pathD = `M ${x1} ${y1} C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${x2} ${y2}`;
-
-        const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-        path.setAttribute("d", pathD);
-        
-        let pathClass = "trace-path";
-        if (currentHoveredTraceNode) {
-          const isPathActive = activeReqs.has(r.id) && activeTests.has(t.id);
-          pathClass += isPathActive ? " highlighted" : " dimmed";
-        }
-        path.setAttribute("class", pathClass);
-        path.dataset.req = r.id;
-        path.dataset.test = t.id;
-
-        svgElement.appendChild(path);
-      });
-    });
-  }
-
-  // Helper function to extract active elements in trace path
   // Draw trace connections SVG paths
   function drawTracePaths() {
     const svgElement = document.getElementById('traceability-svg');
@@ -4062,6 +4036,8 @@
 
   // Clear Trace highlights and restore full columns
   function clearTraceHighlights() {
+    if (frozenTraceNode) return;
+
     currentHoveredTraceNode = null;
 
     const allCards = document.querySelectorAll(".trace-node");
@@ -4082,6 +4058,47 @@
     setTimeout(() => {
       drawTracePaths();
     }, 50);
+  }
+
+  // Unfreeze the traceability graph and clear any highlights
+  function unfreezeTraceability() {
+    if (!frozenTraceNode) return;
+
+    document.querySelectorAll(".trace-node.frozen-trace").forEach(el => {
+      el.classList.remove("frozen-trace");
+    });
+
+    frozenTraceNode = null;
+    clearTraceHighlights();
+  }
+
+  // Handle clicking a node in the traceability graph
+  function handleTraceNodeClick(cardElement, event) {
+    if (event) {
+      event.stopPropagation();
+    }
+    const type = cardElement.dataset.type;
+    const id = cardElement.dataset.id;
+
+    if (!frozenTraceNode) {
+      // Freeze state with this card
+      frozenTraceNode = { id, type, elementId: cardElement.id };
+
+      // Ensure visual highlights are active for the clicked trace
+      applyTraceHighlights(id, type, cardElement);
+
+      // Add the visual styling to indicate this is the frozen source
+      cardElement.classList.add("frozen-trace");
+    } else {
+      // In the frozen state, clicking a card opens its edit modal
+      if (type === 'capability') {
+        openModal('capability-modal', id);
+      } else if (type === 'requirement') {
+        openModal('requirement-modal', id);
+      } else if (type === 'test') {
+        openModal('test-modal', id);
+      }
+    }
   }
 
 
@@ -4136,9 +4153,10 @@
 
     // Untested requirements
     const unlinkedReqs = progReqs.filter(r => 
-      !state.tests.some(t => t.programId === r.programId && t.requirementIds && t.requirementIds.includes(r.id))
+      !(state.tests.some(t => t.programId === r.programId && t.requirementIds && t.requirementIds.includes(r.id)) || (r.inheritPassFromCapability && r.capabilityId))
     );
     const coveragePct = totalCount > 0 ? Math.round(((totalCount - unlinkedReqs.length) / totalCount) * 100) : 0;
+    const testedReqsCount = totalCount - unlinkedReqs.length;
 
     // Backlog tests (not started or in progress)
     const progTests = state.tests.filter(t => t.programId === prog.id);
@@ -4162,6 +4180,168 @@
     // Format current date
     const options = { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' };
     const dateStr = new Date().toLocaleDateString('en-US', options);
+
+    // Group requirements by status for Matrix
+    const passedReqs = progReqs.filter(r => r.status === 'Passed');
+    const pendingReqs = progReqs.filter(r => r.status !== 'Passed');
+
+    const renderPrintReqRow = r => {
+      const linkedTests = state.tests.filter(t => 
+        t.programId === r.programId && 
+        t.requirementIds && 
+        t.requirementIds.includes(r.id)
+      );
+      let testsText = 'None';
+      if (linkedTests.length > 0) {
+        testsText = linkedTests.map(t => `${t.name} (${t.status})`).join(', ');
+      } else {
+        const sources = getInheritedPassSource(r);
+        if (sources && sources.length > 0) {
+          testsText = 'Inherited Pass: ' + sources.map(src => {
+            return `${src.testName || `Req ${src.requirementId}`} (${src.programName})`;
+          }).join(', ');
+        }
+      }
+      
+      let statusClass = 'print-badge-not-started';
+      if (r.status === 'Passed') {
+        statusClass = r.inheritPassFromCapability && r.baseStatus !== 'Passed' ? 'print-badge-inherited' : 'print-badge-passed';
+      } else if (r.status === 'In Progress') {
+        statusClass = 'print-badge-in-progress';
+      }
+
+      return `
+        <tr>
+          <td><strong>${escapeHTML(r.id)}</strong></td>
+          <td>${escapeHTML(r.component || 'SE')}</td>
+          <td>
+            <div>${escapeHTML(r.description)}</div>
+            ${r.notes ? `<div style="font-size: 8pt; color: #555; margin-top: 3px; font-style: italic;">Note: ${escapeHTML(r.notes)}</div>` : ''}
+          </td>
+          <td>${escapeHTML(testsText)}</td>
+          <td>${r.capabilityId ? escapeHTML(r.capabilityId) : 'None'}</td>
+          <td><span class="print-badge ${statusClass}">${escapeHTML(r.status)}</span></td>
+        </tr>
+      `;
+    };
+
+    let reqsTableBodyHtml = '';
+    if (progReqs.length === 0) {
+      reqsTableBodyHtml = `<tr><td colspan="6" style="text-align: center; color: #666;">No requirements linked to this program.</td></tr>`;
+    } else {
+      if (pendingReqs.length > 0) {
+        reqsTableBodyHtml += `
+          <tr style="background-color: #f8fafc; font-weight: bold;">
+            <td colspan="6" style="font-size: 9pt; color: #b45309; padding: 6px 8px; border-bottom: 1px solid #cbd5e1;">
+              ⏳ Active & Pending Verification (${pendingReqs.length})
+            </td>
+          </tr>
+        `;
+        pendingReqs.forEach(r => {
+          reqsTableBodyHtml += renderPrintReqRow(r);
+        });
+      }
+      if (passedReqs.length > 0) {
+        reqsTableBodyHtml += `
+          <tr style="background-color: #f8fafc; font-weight: bold;">
+            <td colspan="6" style="font-size: 9pt; color: #0f766e; padding: 6px 8px; border-bottom: 1px solid #cbd5e1;">
+              ✓ Verified Requirements (${passedReqs.length})
+            </td>
+          </tr>
+        `;
+        passedReqs.forEach(r => {
+          reqsTableBodyHtml += renderPrintReqRow(r);
+        });
+      }
+    }
+
+    // Group tests by status for print
+    const passedTests = progTests.filter(t => t.status === 'Passed');
+    const pendingTestsList = progTests.filter(t => t.status !== 'Passed');
+
+    const renderPrintTestRow = t => {
+      const assignee = t.assigneeId ? state.teamMembers.find(tm => tm.id === t.assigneeId) : null;
+      const assigneeName = assignee ? assignee.name : 'Unassigned';
+      
+      let statusClass = 'print-badge-not-started';
+      if (t.status === 'Passed') statusClass = 'print-badge-passed';
+      else if (t.status === 'In Progress') statusClass = 'print-badge-in-progress';
+
+      let subtasksText = '';
+      if (t.subtasks && Object.keys(t.subtasks).length > 0) {
+        subtasksText = '<div style="margin-top: 4px; font-size: 8pt; border-top: 1px dashed #cbd5e1; padding-top: 3px;"><strong>Subtasks:</strong> ' +
+          Object.keys(t.subtasks).map(k => `${escapeHTML(k)} (${escapeHTML(t.subtasks[k])})`).join(', ') + '</div>';
+      }
+
+      return `
+        <tr>
+          <td>
+            <strong>${escapeHTML(t.name)}</strong>
+            <div style="font-size: 8pt; color: #666;">${escapeHTML(t.id)}</div>
+          </td>
+          <td>${escapeHTML(t.type)}</td>
+          <td>${escapeHTML(assigneeName)}</td>
+          <td>${(t.estimate || 0).toFixed(1).replace(/\.0$/, '')}d</td>
+          <td>
+            <div>${escapeHTML(t.programDescription || 'N/A')}</div>
+            ${t.notes ? `<div style="font-size: 8pt; color: #555; font-style: italic;">Note: ${escapeHTML(t.notes)}</div>` : ''}
+            ${subtasksText}
+          </td>
+          <td>
+            <span class="print-badge ${statusClass}">${escapeHTML(t.status)}</span>
+            ${t.status === 'Passed' && t.passedDate ? `<div style="font-size: 8pt; color: #555; margin-top: 3px; white-space: nowrap;">on ${formatPassDate(t.passedDate)}</div>` : ''}
+          </td>
+        </tr>
+      `;
+    };
+
+    let testsTableBodyHtml = '';
+    if (progTests.length === 0) {
+      testsTableBodyHtml = `<p style="color: #666; font-size: 10pt; font-style: italic;">No verification tests defined for this program.</p>`;
+    } else {
+      testsTableBodyHtml = `
+        <table class="print-table">
+          <thead>
+            <tr>
+              <th style="width: 20%;">Test Name</th>
+              <th style="width: 10%;">Type</th>
+              <th style="width: 15%;">Assignee</th>
+              <th style="width: 10%;">Estimate</th>
+              <th style="width: 30%;">Scope & Subtasks</th>
+              <th style="width: 15%;">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+      `;
+      if (pendingTestsList.length > 0) {
+        testsTableBodyHtml += `
+          <tr style="background-color: #f8fafc; font-weight: bold;">
+            <td colspan="6" style="font-size: 9pt; color: #b45309; padding: 6px 8px; border-bottom: 1px solid #cbd5e1;">
+              ⏳ Test Backlog (Pending Execution) (${pendingTestsList.length})
+            </td>
+          </tr>
+        `;
+        pendingTestsList.forEach(t => {
+          testsTableBodyHtml += renderPrintTestRow(t);
+        });
+      }
+      if (passedTests.length > 0) {
+        testsTableBodyHtml += `
+          <tr style="background-color: #f8fafc; font-weight: bold;">
+            <td colspan="6" style="font-size: 9pt; color: #0f766e; padding: 6px 8px; border-bottom: 1px solid #cbd5e1;">
+              ✓ Passed Verification Tests (${passedTests.length})
+            </td>
+          </tr>
+        `;
+        passedTests.forEach(t => {
+          testsTableBodyHtml += renderPrintTestRow(t);
+        });
+      }
+      testsTableBodyHtml += `
+          </tbody>
+        </table>
+      `;
+    }
 
     let html = `
       <div class="print-header">
@@ -4188,24 +4368,24 @@
       <!-- KPI Summary Grid -->
       <div class="print-kpi-grid">
         <div class="print-kpi-card">
-          <div class="print-kpi-label">Overall Compliance</div>
-          <div class="print-kpi-value">${pct}%</div>
-          <div class="print-kpi-sub">${passedCount} / ${totalCount} Requirements Passed</div>
-        </div>
-        <div class="print-kpi-card">
-          <div class="print-kpi-label">Verification Coverage</div>
+          <div class="print-kpi-label">Requirements Tested</div>
           <div class="print-kpi-value">${coveragePct}%</div>
-          <div class="print-kpi-sub">${unlinkedReqs.length} Untested Gaps</div>
+          <div class="print-kpi-sub">${testedReqsCount} / ${totalCount} Requirements Covered</div>
         </div>
         <div class="print-kpi-card">
-          <div class="print-kpi-label">Execution Backlog</div>
+          <div class="print-kpi-label">Requirements without Tests</div>
+          <div class="print-kpi-value">${unlinkedReqs.length}</div>
+          <div class="print-kpi-sub">${unlinkedReqs.length > 0 ? `${unlinkedReqs.length} Untested Gaps` : 'All Requirements Covered'}</div>
+        </div>
+        <div class="print-kpi-card">
+          <div class="print-kpi-label">Uncompleted Tests</div>
           <div class="print-kpi-value">${pendingTests.length}</div>
-          <div class="print-kpi-sub">${backlogDaysSum.toFixed(1).replace(/\.0$/, '')}d Effort Remaining</div>
+          <div class="print-kpi-sub">${pendingTests.length > 0 ? `${pendingTests.length} Tests Pending Completion` : 'All Tests Completed'}</div>
         </div>
         <div class="print-kpi-card">
-          <div class="print-kpi-label">Total Estimate</div>
-          <div class="print-kpi-value">${totalTestsSum.toFixed(1).replace(/\.0$/, '')}d</div>
-          <div class="print-kpi-sub">${completedTestsSum.toFixed(1).replace(/\.0$/, '')}d Completed</div>
+          <div class="print-kpi-label">Effort Remaining</div>
+          <div class="print-kpi-value">${backlogDaysSum.toFixed(1).replace(/\.0$/, '')}d</div>
+          <div class="print-kpi-sub">Out of ${totalTestsSum.toFixed(1).replace(/\.0$/, '')}d Total (${completedTestsSum.toFixed(1).replace(/\.0$/, '')}d Done)</div>
         </div>
       </div>
 
@@ -4223,53 +4403,7 @@
             </tr>
           </thead>
           <tbody>
-    `;
-
-    if (progReqs.length === 0) {
-      html += `<tr><td colspan="6" style="text-align: center; color: #666;">No requirements linked to this program.</td></tr>`;
-    } else {
-      progReqs.forEach(r => {
-        const linkedTests = state.tests.filter(t => 
-          t.programId === r.programId && 
-          t.requirementIds && 
-          t.requirementIds.includes(r.id)
-        );
-        let testsText = 'None';
-        if (linkedTests.length > 0) {
-          testsText = linkedTests.map(t => `${t.name} (${t.status})`).join(', ');
-        } else {
-          const sources = getInheritedPassSource(r);
-          if (sources && sources.length > 0) {
-            testsText = 'Inherited Pass: ' + sources.map(src => {
-              return `${src.testName || `Req ${src.requirementId}`} (${src.programName})`;
-            }).join(', ');
-          }
-        }
-        
-        let statusClass = 'print-badge-not-started';
-        if (r.status === 'Passed') {
-          statusClass = r.inheritPassFromCapability && r.baseStatus !== 'Passed' ? 'print-badge-inherited' : 'print-badge-passed';
-        } else if (r.status === 'In Progress') {
-          statusClass = 'print-badge-in-progress';
-        }
-
-        html += `
-          <tr>
-            <td><strong>${escapeHTML(r.id)}</strong></td>
-            <td>${escapeHTML(r.component || 'SE')}</td>
-            <td>
-              <div>${escapeHTML(r.description)}</div>
-              ${r.notes ? `<div style="font-size: 8pt; color: #555; margin-top: 3px; font-style: italic;">Note: ${escapeHTML(r.notes)}</div>` : ''}
-            </td>
-            <td>${escapeHTML(testsText)}</td>
-            <td>${r.capabilityId ? escapeHTML(r.capabilityId) : 'None'}</td>
-            <td><span class="print-badge ${statusClass}">${escapeHTML(r.status)}</span></td>
-          </tr>
-        `;
-      });
-    }
-
-    html += `
+            ${reqsTableBodyHtml}
           </tbody>
         </table>
       </div>
@@ -4320,67 +4454,7 @@
 
       <div class="print-section">
         <h2 class="print-section-title">Verification Test & Execution Backlog</h2>
-    `;
-
-    if (progTests.length === 0) {
-      html += `<p style="color: #666; font-size: 10pt; font-style: italic;">No verification tests defined for this program.</p>`;
-    } else {
-      html += `
-        <table class="print-table">
-          <thead>
-            <tr>
-              <th style="width: 20%;">Test Name</th>
-              <th style="width: 10%;">Type</th>
-              <th style="width: 15%;">Assignee</th>
-              <th style="width: 10%;">Estimate</th>
-              <th style="width: 30%;">Scope & Subtasks</th>
-              <th style="width: 15%;">Status</th>
-            </tr>
-          </thead>
-          <tbody>
-      `;
-      progTests.forEach(t => {
-        const assignee = t.assigneeId ? state.teamMembers.find(tm => tm.id === t.assigneeId) : null;
-        const assigneeName = assignee ? assignee.name : 'Unassigned';
-        
-        let statusClass = 'print-badge-not-started';
-        if (t.status === 'Passed') statusClass = 'print-badge-passed';
-        else if (t.status === 'In Progress') statusClass = 'print-badge-in-progress';
-
-        let subtasksText = '';
-        if (t.subtasks && Object.keys(t.subtasks).length > 0) {
-          subtasksText = '<div style="margin-top: 4px; font-size: 8pt; border-top: 1px dashed #cbd5e1; padding-top: 3px;"><strong>Subtasks:</strong> ' +
-            Object.keys(t.subtasks).map(k => `${escapeHTML(k)} (${escapeHTML(t.subtasks[k])})`).join(', ') + '</div>';
-        }
-
-        html += `
-          <tr>
-            <td>
-              <strong>${escapeHTML(t.name)}</strong>
-              <div style="font-size: 8pt; color: #666;">${escapeHTML(t.id)}</div>
-            </td>
-            <td>${escapeHTML(t.type)}</td>
-            <td>${escapeHTML(assigneeName)}</td>
-            <td>${(t.estimate || 0).toFixed(1).replace(/\.0$/, '')}d</td>
-            <td>
-              <div>${escapeHTML(t.programDescription || 'N/A')}</div>
-              ${t.notes ? `<div style="font-size: 8pt; color: #555; font-style: italic;">Note: ${escapeHTML(t.notes)}</div>` : ''}
-              ${subtasksText}
-            </td>
-            <td>
-              <span class="print-badge ${statusClass}">${escapeHTML(t.status)}</span>
-              ${t.status === 'Passed' && t.passedDate ? `<div style="font-size: 8pt; color: #555; margin-top: 3px; white-space: nowrap;">on ${formatPassDate(t.passedDate)}</div>` : ''}
-            </td>
-          </tr>
-        `;
-      });
-      html += `
-          </tbody>
-        </table>
-      `;
-    }
-
-    html += `
+        ${testsTableBodyHtml}
       </div>
       
       <div class="print-footer">
@@ -4808,6 +4882,22 @@
       }
     });
 
+    // Handle mouseleave and click on traceability container to clear highlights / unfreeze
+    const graphContainer = document.getElementById('traceability-graph-container');
+    if (graphContainer) {
+      graphContainer.addEventListener('mouseleave', () => {
+        if (!frozenTraceNode && currentHoveredTraceNode) {
+          clearTraceHighlights();
+        }
+      });
+      graphContainer.addEventListener('click', (e) => {
+        // If clicked in empty space (outside any trace-node card), unfreeze/clear highlights
+        if (!e.target.closest('.trace-node')) {
+          unfreezeTraceability();
+        }
+      });
+    }
+
     // Setup invalid event redirect for tabbed test modal
     const testForm = document.getElementById('test-form');
     if (testForm) {
@@ -5104,6 +5194,7 @@
     toggleProgramDropdown,
     togglePlanningTestFilter,
     toggleProgramsSidebar,
+    toggleKpiPanel,
     saveProgram,
     deleteProgram,
     selectProgram,
@@ -5154,6 +5245,8 @@
     handleTestDragLeave,
     handleTestDrop,
     handleTestDragEnd,
+    handleTraceNodeClick,
+    unfreezeTraceability,
     connectSharedDatabase,
     reconnectSharedDatabase,
     disconnectSharedDatabase,

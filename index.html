@@ -304,7 +304,7 @@
                 </select>
               </div>
               <p style="font-size:12px; color:var(--text-secondary); margin:0;">
-                💡 Hover over any node to highlight its verification trace path. Click on any card to edit its details.
+                💡 Hover to highlight a verification path. Click a card to freeze the view. While frozen, click any card to edit it. Click empty space to unfreeze.
               </p>
             </div>
           </div>
@@ -529,18 +529,15 @@
         <!-- Tab Bar Navigation -->
         <div class="modal-tabs">
           <button type="button" class="modal-tab-btn active" id="tab-btn-setup" onclick="ReqApp.switchModalTab('setup')">
-            Basic & Status
-          </button>
-          <button type="button" class="modal-tab-btn" id="tab-btn-execution" onclick="ReqApp.switchModalTab('execution')">
-            Execution & Context
+            Test Info
           </button>
           <button type="button" class="modal-tab-btn" id="tab-btn-coverage" onclick="ReqApp.switchModalTab('coverage')">
-            Requirements
+            Requirements & Status
           </button>
         </div>
 
         <div class="modal-body" style="padding: 20px 24px;">
-          <!-- Tab 1: Setup & Status -->
+          <!-- Tab 1: Test Info -->
           <div id="tab-content-setup" class="modal-tab-pane">
             <div class="form-group">
               <label class="form-label" for="test-name-input">Test Name</label>
@@ -569,37 +566,10 @@
             </div>
 
             <div style="display: flex; gap: 16px;">
-              <div class="form-group" style="flex: 1;" id="test-status-group">
-                <label class="form-label" for="test-status-select">Outcome Status</label>
-                <select class="form-select" id="test-status-select" onchange="ReqApp.updateModalPassedDateDisplay()" required>
-                  <option value="Not Started">Not Started</option>
-                  <option value="In Progress">In Progress</option>
-                  <option value="Passed">Passed</option>
-                </select>
-                <div id="test-status-rollup-info" style="display:none; font-size:11px; color:var(--text-secondary); margin-top:4px; font-style:italic;">
-                  💡 Status is automatically rolled up from subtasks.
-                </div>
-                <div id="test-passed-date-container" style="display:none; font-size:11px; color:var(--text-secondary); margin-top:4px; font-style:italic;">
-                  📅 Passed on: <span id="test-passed-date-span">N/A</span>
-                </div>
-              </div>
               <div class="form-group" style="flex: 1;">
                 <label class="form-label" for="test-estimate-input">Time Estimate (Days)</label>
                 <input type="number" class="form-input" id="test-estimate-input" min="0" step="0.1" placeholder="e.g. 1.5" required>
               </div>
-            </div>
-
-            <div id="test-subtasks-container" style="display:none; border:1px dashed var(--border-color); border-radius:8px; padding:12px; margin-top:8px; background-color:var(--bg-canvas);">
-              <h4 style="font-family:'Outfit',sans-serif; margin-top:0; margin-bottom:8px; font-size:11px; color:var(--text-secondary); text-transform:uppercase; letter-spacing:0.5px;">Subtask Breakdown</h4>
-              <div id="test-subtasks-list" style="display:flex; flex-direction:column; gap:10px;">
-                <!-- Populated dynamically based on test type -->
-              </div>
-            </div>
-          </div>
-
-          <!-- Tab 2: Execution & Context -->
-          <div id="tab-content-execution" class="modal-tab-pane" style="display: none;">
-            <div style="display: flex; gap: 16px;">
               <div class="form-group" style="flex: 1;">
                 <label class="form-label" for="test-assignee-select">Assignee</label>
                 <select class="form-select" id="test-assignee-select">
@@ -614,19 +584,26 @@
             </div>
 
             <div class="form-group">
-              <label class="form-label" for="test-program-desc-input">Program Context / Scope (Optional)</label>
-              <input type="text" class="form-input" id="test-program-desc-input" placeholder="e.g. Full payload telemetry integration phase">
+              <label class="form-label" for="test-program-desc-input">Test Description</label>
+              <input type="text" class="form-input" id="test-program-desc-input" placeholder="e.g. Full payload telemetry integration phase description">
             </div>
 
             <div class="form-group">
               <label class="form-label" for="test-notes-input">Notes (Optional)</label>
               <textarea class="form-textarea" id="test-notes-input" placeholder="Add test execution logs, notes, or details..." style="height: 100px; resize: vertical;"></textarea>
             </div>
+
+            <div id="test-subtasks-container" style="display:none; border:1px dashed var(--border-color); border-radius:8px; padding:12px; margin-top:8px; background-color:var(--bg-canvas);">
+              <h4 style="font-family:'Outfit',sans-serif; margin-top:0; margin-bottom:8px; font-size:11px; color:var(--text-secondary); text-transform:uppercase; letter-spacing:0.5px;">Subtask Breakdown</h4>
+              <div id="test-subtasks-list" style="display:flex; flex-direction:column; gap:10px;">
+                <!-- Populated dynamically based on test type -->
+              </div>
+            </div>
           </div>
 
-          <!-- Tab 3: Requirements Coverage -->
+          <!-- Tab 2: Requirements & Status -->
           <div id="tab-content-coverage" class="modal-tab-pane" style="display: none;">
-            <div style="display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 20px; height: 350px; min-height: 0;">
+            <div style="display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 20px; height: 320px; min-height: 0;">
               <!-- Left Column: Selection -->
               <div style="display: flex; flex-direction: column; gap: 8px; min-height: 0; height: 100%;">
                 <label class="form-label" style="margin-bottom: 2px;">Select Requirements</label>
@@ -644,6 +621,21 @@
                 <div id="test-requirements-status-list" style="flex: 1; overflow-y: auto; border:1px solid var(--border-color); border-radius:8px; padding:12px; background-color: var(--bg-canvas); display:flex; flex-direction:column; gap:8px;">
                   <!-- Populated dynamically -->
                 </div>
+              </div>
+            </div>
+
+            <div class="form-group" id="test-status-group" style="margin-top: 16px;">
+              <label class="form-label" for="test-status-select">Test Status</label>
+              <select class="form-select" id="test-status-select" onchange="ReqApp.updateModalPassedDateDisplay()" required>
+                <option value="Not Started">Not Started</option>
+                <option value="In Progress">In Progress</option>
+                <option value="Passed">Passed</option>
+              </select>
+              <div id="test-status-rollup-info" style="display:none; font-size:11px; color:var(--text-secondary); margin-top:4px; font-style:italic;">
+                💡 Status is automatically rolled up from subtasks.
+              </div>
+              <div id="test-passed-date-container" style="display:none; font-size:11px; color:var(--text-secondary); margin-top:4px; font-style:italic;">
+                📅 Passed on: <span id="test-passed-date-span">N/A</span>
               </div>
             </div>
           </div>

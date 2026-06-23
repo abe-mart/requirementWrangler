@@ -1251,21 +1251,12 @@ body {
   }
 }
 
-/* Statement hover row expansion logic */
+/* Statement wrapping logic */
 .statement-cell {
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  overflow: hidden;
-  max-width: 900px; /* Show more text by default */
+  white-space: normal;
+  word-break: break-word;
   font-weight: 500;
   color: var(--text-primary);
-}
-
-.custom-table tr:hover .statement-cell {
-  white-space: normal;
-  overflow: visible;
-  text-overflow: clip;
-  word-break: break-word;
 }
 
 /* Planning Desk Styles */
@@ -1751,6 +1742,14 @@ body {
   border-color: var(--accent-color) !important;
   transform: translateY(-2px) scale(1.02);
   box-shadow: 0 0 12px rgba(59, 130, 246, 0.25);
+  opacity: 1 !important;
+}
+
+.trace-node.frozen-trace {
+  border-color: var(--accent-color) !important;
+  border-width: 2px !important;
+  transform: translateY(-2px) scale(1.02);
+  box-shadow: 0 0 0 3.5px var(--accent-glow), 0 0 16px var(--accent-glow) !important;
   opacity: 1 !important;
 }
 
@@ -2266,3 +2265,164 @@ body {
   transform: scale(1.05);
   cursor: pointer;
 }
+
+/* Program Details KPI Grid and Cards */
+.program-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  margin-top: 12px;
+  margin-bottom: 8px;
+  width: 100%;
+}
+
+@media (max-width: 1024px) {
+  .program-kpi-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 600px) {
+  .program-kpi-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.kpi-card {
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 16px;
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: hidden;
+  user-select: none;
+}
+
+.kpi-card.clickable {
+  cursor: pointer;
+}
+
+.kpi-card.clickable:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+  border-color: var(--text-secondary);
+}
+
+.kpi-card-content {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.kpi-card-label {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  overflow: hidden;
+}
+
+.kpi-card-value {
+  font-family: 'Outfit', sans-serif;
+  font-size: 24px;
+  font-weight: 800;
+  color: var(--text-primary);
+  line-height: 1.2;
+}
+
+.kpi-card-subtext {
+  font-size: 11px;
+  color: var(--text-secondary);
+  line-height: 1.3;
+}
+
+.kpi-icon-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background-color: var(--bg-canvas);
+  color: var(--text-secondary);
+  flex-shrink: 0;
+  margin-left: 8px;
+  transition: all 0.2s ease;
+}
+
+/* KPI Card Status Colors */
+.kpi-card.kpi-passed {
+  border-color: var(--status-passed-border);
+  background-color: var(--status-passed-bg);
+}
+.kpi-card.kpi-passed .kpi-card-label,
+.kpi-card.kpi-passed .kpi-card-value,
+.kpi-card.kpi-passed .kpi-card-subtext {
+  color: var(--status-passed);
+}
+.kpi-card.kpi-passed .kpi-icon-container {
+  background-color: rgba(16, 185, 129, 0.12);
+  color: var(--status-passed);
+}
+.kpi-card.kpi-passed.clickable:hover {
+  border-color: var(--status-passed) !important;
+  background-color: rgba(16, 185, 129, 0.16) !important;
+}
+
+.kpi-card.kpi-failed {
+  border-color: var(--status-failed-border);
+  background-color: var(--status-failed-bg);
+}
+.kpi-card.kpi-failed .kpi-card-label,
+.kpi-card.kpi-failed .kpi-card-value,
+.kpi-card.kpi-failed .kpi-card-subtext {
+  color: var(--status-failed);
+}
+.kpi-card.kpi-failed .kpi-icon-container {
+  background-color: rgba(239, 68, 68, 0.12);
+  color: var(--status-failed);
+}
+.kpi-card.kpi-failed.clickable:hover {
+  border-color: var(--status-failed) !important;
+  background-color: rgba(239, 68, 68, 0.16) !important;
+}
+
+.kpi-card.kpi-warning {
+  border-color: var(--status-pending-border);
+  background-color: var(--status-pending-bg);
+}
+.kpi-card.kpi-warning .kpi-card-label,
+.kpi-card.kpi-warning .kpi-card-value,
+.kpi-card.kpi-warning .kpi-card-subtext {
+  color: var(--status-pending);
+}
+.kpi-card.kpi-warning .kpi-icon-container {
+  background-color: rgba(217, 119, 6, 0.12);
+  color: var(--status-pending);
+}
+.kpi-card.kpi-warning.clickable:hover {
+  border-color: var(--status-pending) !important;
+  background-color: rgba(217, 119, 6, 0.16) !important;
+}
+[data-theme="dark"] .kpi-card.kpi-warning.clickable:hover {
+  background-color: rgba(251, 191, 36, 0.16) !important;
+}
+
+.kpi-card.kpi-neutral {
+  border-color: var(--border-color);
+  background-color: var(--bg-card);
+}
+.kpi-card.kpi-neutral .kpi-icon-container {
+  background-color: var(--bg-canvas);
+  color: var(--text-secondary);
+}
+
