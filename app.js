@@ -178,6 +178,32 @@
     const mergedDeletedTombstones = Array.from(mergedTombstonesMap.values());
     const activeDeletedIds = mergedDeletedTombstones.map(x => x.id);
 
+    function cleanItemReferences(item) {
+      if (item.requirementIds) {
+        item.requirementIds = item.requirementIds.filter(id => !activeDeletedIds.includes(id));
+      }
+      if (item.implementedRequirementIds) {
+        item.implementedRequirementIds = item.implementedRequirementIds.filter(id => !activeDeletedIds.includes(id));
+      }
+      if (item.capabilityId && activeDeletedIds.includes(item.capabilityId)) {
+        item.capabilityId = null;
+      }
+      if (item.programId && activeDeletedIds.includes(item.programId)) {
+        item.programId = null;
+      }
+      if (item.assigneeId && activeDeletedIds.includes(item.assigneeId)) {
+        item.assigneeId = null;
+      }
+      return item;
+    }
+
+    function mergeStringArrays(localArr, remoteArr) {
+      const cleanLocal = (localArr || []).filter(item => !activeDeletedIds.includes(item));
+      const cleanRemote = (remoteArr || []).filter(item => !activeDeletedIds.includes(item));
+      const set = new Set([...cleanRemote, ...cleanLocal]);
+      return Array.from(set);
+    }
+
     function mergeObjectLists(localList, remoteList) {
       const cleanLocal = (localList || []).filter(item => !activeDeletedIds.includes(item.id));
       const cleanRemote = (remoteList || []).filter(item => !activeDeletedIds.includes(item.id));
@@ -189,26 +215,38 @@
       for (const localItem of cleanLocal) {
         const remoteItem = remoteMap.get(localItem.id);
         if (remoteItem) {
-          mergedList.push(Object.assign({}, remoteItem, localItem));
+          const localTime = localItem.updatedAt || 0;
+          const remoteTime = remoteItem.updatedAt || 0;
+          let merged;
+          if (localTime > remoteTime) {
+            merged = Object.assign({}, localItem);
+          } else if (remoteTime > localTime) {
+            merged = Object.assign({}, remoteItem);
+          } else {
+            merged = Object.assign({}, remoteItem, localItem);
+            if (remoteItem.requirementIds && localItem.requirementIds) {
+              merged.requirementIds = mergeStringArrays(localItem.requirementIds, remoteItem.requirementIds);
+            }
+            if (remoteItem.implementedRequirementIds && localItem.implementedRequirementIds) {
+              merged.implementedRequirementIds = mergeStringArrays(localItem.implementedRequirementIds, remoteItem.implementedRequirementIds);
+            }
+            if (remoteItem.subtasks && localItem.subtasks) {
+              merged.subtasks = Object.assign({}, remoteItem.subtasks, localItem.subtasks);
+            }
+          }
+          mergedList.push(cleanItemReferences(merged));
         } else {
-          mergedList.push(localItem);
+          mergedList.push(cleanItemReferences(Object.assign({}, localItem)));
         }
       }
 
       for (const remoteItem of cleanRemote) {
         if (!localMap.has(remoteItem.id)) {
-          mergedList.push(remoteItem);
+          mergedList.push(cleanItemReferences(Object.assign({}, remoteItem)));
         }
       }
 
       return mergedList;
-    }
-
-    function mergeStringArrays(localArr, remoteArr) {
-      const cleanLocal = (localArr || []).filter(item => !activeDeletedIds.includes(item));
-      const cleanRemote = (remoteArr || []).filter(item => !activeDeletedIds.includes(item));
-      const set = new Set([...cleanRemote, ...cleanLocal]);
-      return Array.from(set);
     }
 
     // Merge activityLog (deduplicate by timestamp + action text, sort by timestamp desc, limit to 100)
@@ -226,7 +264,11 @@
     merged.programs = mergeObjectLists(local.programs, remote.programs);
     merged.requirements = mergeObjectLists(local.requirements, remote.requirements);
     merged.capabilities = mergeObjectLists(local.capabilities, remote.capabilities);
-    merged.tests = mergeObjectLists(local.tests, remote.tests);
+    
+    const mergedTests = mergeObjectLists(local.tests, remote.tests);
+    mergedTests.sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
+    merged.tests = mergedTests;
+
     merged.teamMembers = mergeObjectLists(local.teamMembers, remote.teamMembers);
     merged.testTypes = mergeStringArrays(local.testTypes, remote.testTypes);
     merged.componentCodes = mergeStringArrays(local.componentCodes, remote.componentCodes);
@@ -1485,7 +1527,7 @@
     if (name) {
       const initials = getInitials(name);
       const newId = `TM-${Math.random().toString(36).substr(2, 5).toUpperCase()}`;
-      state.teamMembers.push({ id: newId, name, initials, color });
+      state.teamMembers.push({ id: newId, name, initials, color, updatedAt: Date.now() });
       untrackDeletion(newId);
       logActivity(`Added team member "${name}"`);
       nameInput.value = '';
@@ -1504,6 +1546,7 @@
       state.tests.forEach(t => {
         if (t.assigneeId === id) {
           t.assigneeId = null;
+          t.updatedAt = Date.now();
         }
       });
       trackDeletion(id);
@@ -1550,6 +1593,7 @@
       if (!test.requirementIds) test.requirementIds = [];
       if (!test.requirementIds.includes(reqId)) {
         test.requirementIds.push(reqId);
+        test.updatedAt = Date.now();
       }
       syncAndRefresh();
       closeModal('link-test-modal');
@@ -1673,14 +1717,14 @@
         alert("Program ID already exists!");
         return;
       }
-      state.programs.push({ id: newId, name, description });
+      state.programs.push({ id: newId, name, description, updatedAt: Date.now() });
       untrackDeletion(newId);
       logActivity(`Created program "${newId}"`);
       selectedProgramId = newId; // select newly created program
     } else {
       const idx = state.programs.findIndex(p => p.id === editId);
       if (idx !== -1) {
-        state.programs[idx] = { id: editId, name, description };
+        state.programs[idx] = { id: editId, name, description, updatedAt: Date.now() };
         untrackDeletion(editId);
         logActivity(`Updated program "${editId}"`);
       }
@@ -1692,6 +1736,12 @@
 
   function deleteProgram(id) {
     if (confirm(`Are you sure you want to delete program "${id}"? This unlinks but does not delete its requirements.`)) {
+      state.requirements.forEach(r => {
+        if (r.programId === id) {
+          r.programId = null;
+          r.updatedAt = Date.now();
+        }
+      });
       state.programs = state.programs.filter(p => p.id !== id);
       if (selectedProgramId === id) {
         selectedProgramId = state.programs.length > 0 ? state.programs[0].id : null;
@@ -1730,7 +1780,8 @@
         component,
         description,
         status: 'Not Started',
-        notes
+        notes,
+        updatedAt: Date.now()
       });
       untrackDeletion(newId);
       logActivity(`Created requirement "${newId}"`);
@@ -1743,6 +1794,7 @@
         state.requirements[idx].component = component;
         state.requirements[idx].description = description;
         state.requirements[idx].notes = notes;
+        state.requirements[idx].updatedAt = Date.now();
         untrackDeletion(editId);
         logActivity(`Updated requirement "${editId}"`);
       }
@@ -1755,8 +1807,17 @@
   function deleteRequirement(id) {
     if (confirm(`Are you sure you want to delete requirement "${id}"? This unlinks it from any tests.`)) {
       state.tests.forEach(t => {
-        if (t.requirementIds) {
+        let changed = false;
+        if (t.requirementIds && t.requirementIds.includes(id)) {
           t.requirementIds = t.requirementIds.filter(reqId => reqId !== id);
+          changed = true;
+        }
+        if (t.implementedRequirementIds && t.implementedRequirementIds.includes(id)) {
+          t.implementedRequirementIds = t.implementedRequirementIds.filter(reqId => reqId !== id);
+          changed = true;
+        }
+        if (changed) {
+          t.updatedAt = Date.now();
         }
       });
       state.requirements = state.requirements.filter(r => r.id !== id);
@@ -1786,13 +1847,13 @@
         alert("Capability ID already exists!");
         return;
       }
-      state.capabilities.push({ id: newId, description, status: 'Not Started' });
+      state.capabilities.push({ id: newId, description, status: 'Not Started', updatedAt: Date.now() });
       untrackDeletion(newId);
       logActivity(`Created capability "${newId}"`);
     } else {
       const idx = state.capabilities.findIndex(c => c.id === editId);
       if (idx !== -1) {
-        state.capabilities[idx] = { id: editId, description, status: state.capabilities[idx].status };
+        state.capabilities[idx] = { id: editId, description, status: state.capabilities[idx].status, updatedAt: Date.now() };
         untrackDeletion(editId);
         logActivity(`Updated capability "${editId}"`);
       }
@@ -1808,6 +1869,7 @@
         if (r.capabilityId === id) {
           r.capabilityId = null;
           r.inheritPassFromCapability = false;
+          r.updatedAt = Date.now();
         }
       });
       state.capabilities = state.capabilities.filter(c => c.id !== id);
@@ -1875,7 +1937,9 @@
         notes,
         subtasks,
         estimate,
-        passedDate: null
+        passedDate: null,
+        updatedAt: Date.now(),
+        sortOrder: state.tests.length
       });
       untrackDeletion(newId);
       logActivity(`Created test "${name || newId}"`);
@@ -1898,7 +1962,9 @@
           notes,
           subtasks,
           estimate,
-          passedDate: existingTest.passedDate
+          passedDate: existingTest.passedDate,
+          updatedAt: Date.now(),
+          sortOrder: existingTest.hasOwnProperty('sortOrder') ? existingTest.sortOrder : idx
         };
         untrackDeletion(editId);
         logActivity(`Updated test "${name || editId}"`);
@@ -1925,6 +1991,7 @@
     if (idx !== -1) {
       const test = state.tests[idx];
       test.status = nextStatus;
+      test.updatedAt = Date.now();
       logActivity(`Updated test "${test.name}" status to "${nextStatus}"`);
       syncAndRefresh();
     }
@@ -4761,12 +4828,14 @@
         const existingIdx = state.capabilities.findIndex(c => c.id === id);
         if (existingIdx !== -1) {
           state.capabilities[existingIdx].description = desc;
+          state.capabilities[existingIdx].updatedAt = Date.now();
           updateCount++;
         } else {
           state.capabilities.push({
             id: id,
             description: desc,
-            status: 'Not Started'
+            status: 'Not Started',
+            updatedAt: Date.now()
           });
           importCount++;
         }
@@ -4817,6 +4886,7 @@
           state.requirements[existingIdx].programId = programId;
           state.requirements[existingIdx].description = desc;
           state.requirements[existingIdx].capabilityId = capId;
+          state.requirements[existingIdx].updatedAt = Date.now();
           updateCount++;
         } else {
           state.requirements.push({
@@ -4827,7 +4897,8 @@
             component: 'SE', // Default component code
             description: desc,
             status: 'Not Started',
-            notes: ''
+            notes: '',
+            updatedAt: Date.now()
           });
           importCount++;
         }
@@ -5169,6 +5240,12 @@
       const [removed] = state.tests.splice(draggedIdx, 1);
       state.tests.splice(targetIdx, 0, removed);
       
+      // Update sortOrder and updatedAt on all tests
+      state.tests.forEach((t, i) => {
+        t.sortOrder = i;
+        t.updatedAt = Date.now();
+      });
+
       syncAndRefresh();
     }
     

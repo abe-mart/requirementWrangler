@@ -265,12 +265,42 @@
     return state;
   }
 
+  function normalizeState(state) {
+    if (!state) return state;
+    if (!state.programs) state.programs = [];
+    if (!state.requirements) state.requirements = [];
+    if (!state.capabilities) state.capabilities = [];
+    if (!state.tests) state.tests = [];
+    if (!state.teamMembers) state.teamMembers = [];
+    if (!state.deletedIds) state.deletedIds = [];
+    if (!state.activityLog) state.activityLog = [];
+
+    state.programs.forEach(p => {
+      if (!p.hasOwnProperty('updatedAt')) p.updatedAt = 0;
+    });
+    state.requirements.forEach(r => {
+      if (!r.hasOwnProperty('updatedAt')) r.updatedAt = 0;
+    });
+    state.capabilities.forEach(c => {
+      if (!c.hasOwnProperty('updatedAt')) c.updatedAt = 0;
+    });
+    state.tests.forEach(t => {
+      if (!t.hasOwnProperty('updatedAt')) t.updatedAt = 0;
+      if (!t.hasOwnProperty('sortOrder')) t.sortOrder = 0;
+    });
+    state.teamMembers.forEach(tm => {
+      if (!tm.hasOwnProperty('updatedAt')) tm.updatedAt = 0;
+    });
+    return state;
+  }
+
   // Load state from localStorage or use default mock data
   function loadState() {
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
       if (stored) {
-        const state = JSON.parse(stored);
+        let state = JSON.parse(stored);
+        state = normalizeState(state);
         // Ensure properties exist
         if (state.programs && state.requirements && state.capabilities && state.tests) {
           // Ensure testTypes exists in older saves
@@ -400,7 +430,7 @@
       console.error("Failed to load state from localStorage:", e);
     }
     // Fallback to default
-    return evaluate(JSON.parse(JSON.stringify(defaultState)));
+    return evaluate(normalizeState(JSON.parse(JSON.stringify(defaultState))));
   }
 
   // Save state to localStorage
