@@ -291,6 +291,17 @@
         }
       } catch (err) {
         console.warn("Auto-polling file check failed:", err);
+        if (err.name === 'InvalidStateError') {
+          try {
+            const freshHandle = await getStoredFileHandle();
+            if (freshHandle) {
+              sharedFileHandle = freshHandle;
+              console.log("Auto-polling: Re-acquired handle from IndexedDB to resolve InvalidStateError.");
+            }
+          } catch (e) {
+            console.warn("Auto-polling: Failed to re-acquire file handle:", e);
+          }
+        }
       }
     }, 15000);
   }
@@ -514,8 +525,24 @@
         await writable.close();
 
         // 7. Success! Save the final modified time
-        const finalFile = await sharedFileHandle.getFile();
-        lastSharedFileModifiedTime = finalFile.lastModified;
+        // Introduce retry/delay for getFile to avoid Chrome race condition immediately after close()
+        let finalFile = null;
+        for (let i = 0; i < 5; i++) {
+          try {
+            finalFile = await sharedFileHandle.getFile();
+            break;
+          } catch (e) {
+            if (e.name === 'InvalidStateError' && i < 4) {
+              console.log(`getFile() after close() failed with InvalidStateError (attempt ${i+1}). Retrying in 100ms...`);
+              await new Promise(resolve => setTimeout(resolve, 100));
+            } else {
+              throw e;
+            }
+          }
+        }
+        if (finalFile) {
+          lastSharedFileModifiedTime = finalFile.lastModified;
+        }
         isOffline = false;
         updateSyncStatus('connected', `Connected: ${sharedFileHandle.name}`);
 
@@ -528,6 +555,18 @@
         return; // Success, exit retry loop
       } catch (err) {
         console.warn(`Sync attempt ${attempts} failed:`, err);
+
+        if (err.name === 'InvalidStateError') {
+          console.log("InvalidStateError caught in sync loop. Re-acquiring handle from IndexedDB to refresh cache...");
+          try {
+            const freshHandle = await getStoredFileHandle();
+            if (freshHandle) {
+              sharedFileHandle = freshHandle;
+            }
+          } catch (e) {
+            console.warn("Failed to re-acquire file handle:", e);
+          }
+        }
 
         // Check for permission errors - propagate immediately
         if (err.name === 'NotAllowedError' || err.name === 'SecurityError') {
