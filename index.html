@@ -436,47 +436,73 @@
       </header>
       <form id="requirement-form" onsubmit="ReqApp.saveRequirement(event)">
         <input type="hidden" id="requirement-edit-db-id">
-        <div class="modal-body">
-          <div class="form-group">
-            <label class="form-label" for="requirement-id-input">Requirement ID</label>
-            <input type="text" class="form-input" id="requirement-id-input" placeholder="e.g. REQ-SAB-04" required>
-          </div>
-          <div class="form-group">
-            <label class="form-label" for="requirement-component-select">Component Code</label>
-            <select class="form-select" id="requirement-component-select" required>
-              <!-- Populated dynamically -->
-            </select>
-          </div>
-          <div class="form-group">
-            <label class="form-label" for="requirement-program-select">Program</label>
-            <select class="form-select" id="requirement-program-select" required>
-              <!-- Populated dynamically -->
-            </select>
-          </div>
-          <div class="form-group">
-            <label class="form-label" for="requirement-capability-select">Capability Link (Optional)</label>
-            <select class="form-select" id="requirement-capability-select">
-              <option value="">None (Standalone)</option>
-              <!-- Populated dynamically -->
-            </select>
-          </div>
-          <div class="form-group checkbox-group" id="requirement-inherit-container">
-            <input type="checkbox" class="form-checkbox" id="requirement-inherit-checkbox">
-            <label class="form-label" for="requirement-inherit-checkbox" style="margin-bottom: 0; cursor: pointer;">
-              Inherit Pass status from linked Capability (Optional)
-            </label>
-            <div class="tooltip" aria-label="Explanation of inheritance">
-              <span style="font-size: 14px; color: var(--text-secondary); cursor: help;">&#9432;</span>
-              <span class="tooltiptext">If checked, the requirement will automatically pass if the linked capability is passed by ANY program requirement.</span>
+        <div class="modal-body" style="padding: 20px 24px;">
+          <div style="display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 20px; max-height: 480px; min-height: 0;">
+            <!-- Left Column: Details -->
+            <div style="display: flex; flex-direction: column; gap: 12px; overflow-y: auto; padding-right: 8px;">
+              <div class="form-group" style="margin-bottom: 0;">
+                <label class="form-label" for="requirement-id-input">Requirement ID</label>
+                <input type="text" class="form-input" id="requirement-id-input" placeholder="e.g. REQ-SAB-04" required>
+              </div>
+              <div class="form-group" style="margin-bottom: 0;">
+                <label class="form-label" for="requirement-component-select">Component Code</label>
+                <select class="form-select" id="requirement-component-select" required>
+                  <!-- Populated dynamically -->
+                </select>
+              </div>
+              <div class="form-group" style="margin-bottom: 0;">
+                <label class="form-label" for="requirement-program-select">Program</label>
+                <select class="form-select" id="requirement-program-select" onchange="ReqApp.populateRequirementTests()" required>
+                  <!-- Populated dynamically -->
+                </select>
+              </div>
+              <div class="form-group" style="margin-bottom: 0;">
+                <label class="form-label" for="requirement-capability-select">Capability Link (Optional)</label>
+                <select class="form-select" id="requirement-capability-select">
+                  <option value="">None (Standalone)</option>
+                  <!-- Populated dynamically -->
+                </select>
+              </div>
+              <div class="form-group checkbox-group" id="requirement-inherit-container" style="margin-bottom: 0;">
+                <input type="checkbox" class="form-checkbox" id="requirement-inherit-checkbox">
+                <label class="form-label" for="requirement-inherit-checkbox" style="margin-bottom: 0; cursor: pointer;">
+                  Inherit Pass status from linked Capability (Optional)
+                </label>
+                <div class="tooltip" aria-label="Explanation of inheritance">
+                  <span style="font-size: 14px; color: var(--text-secondary); cursor: help;">&#9432;</span>
+                  <span class="tooltiptext">If checked, the requirement will automatically pass if the linked capability is passed by ANY program requirement.</span>
+                </div>
+              </div>
+              <div class="form-group checkbox-group" id="requirement-all-tests-container" style="margin-bottom: 0;">
+                <input type="checkbox" class="form-checkbox" id="requirement-all-tests-checkbox">
+                <label class="form-label" for="requirement-all-tests-checkbox" style="margin-bottom: 0; cursor: pointer;">
+                  Require all linked verification tests to pass
+                </label>
+                <div class="tooltip" aria-label="Explanation of test pass-off logic">
+                  <span style="font-size: 14px; color: var(--text-secondary); cursor: help;">&#9432;</span>
+                  <span class="tooltiptext">If checked, all linked tests must pass for this requirement to be marked Passed. If unchecked, a single passing test is sufficient.</span>
+                </div>
+              </div>
+              <div class="form-group" style="margin-bottom: 0;">
+                <label class="form-label" for="requirement-desc-input">Requirement Description</label>
+                <textarea class="form-textarea" id="requirement-desc-input" placeholder="Requirement statement..." style="height: 100px; resize: vertical;" required></textarea>
+              </div>
+              <div class="form-group" style="margin-bottom: 0;">
+                <label class="form-label" for="requirement-notes-input">Notes (Optional)</label>
+                <textarea class="form-textarea" id="requirement-notes-input" placeholder="Add engineering notes, links, or context..." style="height: 100px; resize: vertical;"></textarea>
+              </div>
             </div>
-          </div>
-          <div class="form-group">
-            <label class="form-label" for="requirement-desc-input">Requirement Description</label>
-            <textarea class="form-textarea" id="requirement-desc-input" placeholder="Requirement statement..." required></textarea>
-          </div>
-          <div class="form-group">
-            <label class="form-label" for="requirement-notes-input">Notes (Optional)</label>
-            <textarea class="form-textarea" id="requirement-notes-input" placeholder="Add engineering notes, links, or context..."></textarea>
+            
+            <!-- Right Column: Verification Coverage -->
+            <div style="display: flex; flex-direction: column; gap: 12px; overflow-y: auto; padding-right: 8px;">
+              <div class="form-group" style="display: flex; flex-direction: column; flex: 1; min-height: 0; margin-bottom: 0; height: 100%;">
+                <label class="form-label">Linked Verification Tests</label>
+                <input type="text" id="requirement-tests-search" class="form-input" placeholder="Search tests by name, ID..." oninput="ReqApp.filterRequirementTests()" style="margin-bottom: 8px;">
+                <div id="requirement-tests-list" style="flex: 1; min-height: 300px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: 8px; padding: 12px; background-color: var(--input-bg); display: flex; flex-direction: column; gap: 6px;">
+                  <!-- Populated dynamically -->
+                </div>
+              </div>
+            </div>
           </div>
         </div>
         <footer class="modal-footer">

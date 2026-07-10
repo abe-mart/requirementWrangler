@@ -707,6 +707,13 @@ body {
   color: var(--status-inherited);
 }
 
+.badge-unimplemented {
+  background-color: rgba(148, 163, 184, 0.05);
+  border: 1px dashed var(--text-secondary);
+  color: var(--text-secondary);
+  opacity: 0.75;
+}
+
 /* Inline Action Icons */
 .table-actions {
   display: flex;
@@ -2241,6 +2248,10 @@ body {
 /* Test Modal Overhaul Styling */
 #test-modal .modal-content {
   max-width: 850px;
+}
+
+#requirement-modal .modal-content {
+  max-width: 800px;
 }
 
 .test-req-checkbox-label {

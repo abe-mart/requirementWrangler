@@ -1149,6 +1149,68 @@
     renderSelectedRequirementsStatus();
   }
 
+  function populateRequirementTests() {
+    const programSelect = document.getElementById('requirement-program-select');
+    const container = document.getElementById('requirement-tests-list');
+    if (!programSelect || !container) return;
+
+    // Reset search input
+    const searchInput = document.getElementById('requirement-tests-search');
+    if (searchInput) {
+      searchInput.value = '';
+    }
+
+    const programId = programSelect.value;
+    if (!programId) {
+      container.innerHTML = '<div style="color:var(--text-secondary); font-size:12px; padding:4px;">Select a program first</div>';
+      return;
+    }
+
+    const programTests = state.tests.filter(t => t.programId === programId);
+    if (programTests.length === 0) {
+      container.innerHTML = '<div style="color:var(--text-secondary); font-size:12px; padding:4px;">No tests exist for this program</div>';
+      return;
+    }
+
+    const reqId = document.getElementById('requirement-edit-db-id').value;
+
+    container.innerHTML = programTests.map(t => {
+      const isLinked = reqId && t.requirementIds && t.requirementIds.includes(reqId);
+      const searchText = `${t.name.toLowerCase()} ${t.id.toLowerCase()}`;
+      
+      return `
+        <div class="req-test-item" data-search-text="${escapeHTML(searchText)}" style="display: flex; align-items: center; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid var(--border-color);">
+          <div style="flex: 1; min-width: 0; padding-right: 12px;">
+            <div style="font-weight: 600; font-size: 13px; text-overflow: ellipsis; overflow: hidden; white-space: nowrap; color: var(--text-primary);">${escapeHTML(t.name)}</div>
+            <div style="font-size: 11px; color: var(--text-secondary);">${escapeHTML(t.id)}</div>
+          </div>
+          <div style="display: flex; align-items: center;">
+            <label style="display: flex; align-items: center; gap: 6px; font-size: 12px; margin-bottom: 0; cursor: pointer; color: var(--text-primary);">
+              <input type="checkbox" class="req-test-link-checkbox" data-test-id="${escapeHTML(t.id)}" ${isLinked ? 'checked' : ''} onchange="ReqApp.onReqTestLinkChange(this)"> Link
+            </label>
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  function onReqTestLinkChange(el) {
+    // Symmetrical change handler (link only)
+  }
+
+  function filterRequirementTests() {
+    const q = (document.getElementById('requirement-tests-search').value || '').toLowerCase().trim();
+    const items = document.querySelectorAll('.req-test-item');
+    items.forEach(item => {
+      const text = item.dataset.searchText || '';
+      if (!q || text.includes(q)) {
+        item.style.setProperty('display', 'flex', 'important');
+      } else {
+        item.style.setProperty('display', 'none', 'important');
+      }
+    });
+  }
+
   function renderSelectedRequirementsStatus() {
     const rightContainer = document.getElementById('test-requirements-status-list');
     if (!rightContainer) return;
@@ -1659,9 +1721,11 @@
         document.getElementById('requirement-program-select').value = item.programId;
         document.getElementById('requirement-capability-select').value = item.capabilityId || '';
         document.getElementById('requirement-inherit-checkbox').checked = !!item.inheritPassFromCapability;
+        document.getElementById('requirement-all-tests-checkbox').checked = !!item.requireAllTestsPass;
         document.getElementById('requirement-component-select').value = item.component || '';
         document.getElementById('requirement-desc-input').value = item.description;
         document.getElementById('requirement-notes-input').value = item.notes || '';
+        populateRequirementTests();
       }
     } else if (modalId === 'capability-modal') {
       const item = state.capabilities.find(c => c.id === editId);
@@ -1717,6 +1781,7 @@
       if (selectedProgramId) {
         document.getElementById('requirement-program-select').value = selectedProgramId;
       }
+      populateRequirementTests();
     } else if (modalId === 'capability-modal') {
       document.getElementById('capability-edit-id').value = '';
       document.getElementById('capability-id-input').disabled = false;
@@ -1798,6 +1863,7 @@
     const programId = document.getElementById('requirement-program-select').value;
     const capabilityId = document.getElementById('requirement-capability-select').value || null;
     const inheritPassFromCapability = document.getElementById('requirement-inherit-checkbox').checked;
+    const requireAllTestsPass = document.getElementById('requirement-all-tests-checkbox').checked;
     const component = document.getElementById('requirement-component-select').value;
     const description = document.getElementById('requirement-desc-input').value.trim();
     const notes = document.getElementById('requirement-notes-input').value.trim();
@@ -1816,6 +1882,7 @@
         programId,
         capabilityId,
         inheritPassFromCapability,
+        requireAllTestsPass,
         component,
         description,
         status: 'Not Started',
@@ -1830,6 +1897,7 @@
         state.requirements[idx].programId = programId;
         state.requirements[idx].capabilityId = capabilityId;
         state.requirements[idx].inheritPassFromCapability = inheritPassFromCapability;
+        state.requirements[idx].requireAllTestsPass = requireAllTestsPass;
         state.requirements[idx].component = component;
         state.requirements[idx].description = description;
         state.requirements[idx].notes = notes;
@@ -1838,6 +1906,38 @@
         logActivity(`Updated requirement "${editId}"`);
       }
     }
+
+    // Update test links for this requirement
+    const targetReqId = editId || newId;
+    state.tests.forEach(t => {
+      if (t.programId === programId) {
+        const linkEl = document.querySelector(`.req-test-link-checkbox[data-test-id="${t.id}"]`);
+        if (linkEl) {
+          if (!t.requirementIds) t.requirementIds = [];
+          if (!t.implementedRequirementIds) t.implementedRequirementIds = [];
+
+          const isLinked = linkEl.checked;
+          const linkIdx = t.requirementIds.indexOf(targetReqId);
+          if (isLinked) {
+            if (linkIdx === -1) {
+              t.requirementIds.push(targetReqId);
+              t.updatedAt = Date.now();
+            }
+          } else {
+            if (linkIdx !== -1) {
+              t.requirementIds.splice(linkIdx, 1);
+              t.updatedAt = Date.now();
+            }
+            // Also remove from implementedRequirementIds if unlinked
+            const implIdx = t.implementedRequirementIds.indexOf(targetReqId);
+            if (implIdx !== -1) {
+              t.implementedRequirementIds.splice(implIdx, 1);
+              t.updatedAt = Date.now();
+            }
+          }
+        }
+      }
+    });
 
     syncAndRefresh();
     closeModal('requirement-modal');
@@ -2739,9 +2839,15 @@
           const reqsBadges = (t.requirementIds || []).map(reqId => {
             const req = state.requirements.find(r => r.id === reqId);
             const compText = req ? ` [${req.component}]` : '';
+            const isImplemented = !t.implementedRequirementIds || t.implementedRequirementIds.includes(reqId);
+            const badgeClass = isImplemented ? 'badge-pending' : 'badge-unimplemented';
+            const icon = isImplemented ? '' : '&#9675; ';
+            const titleText = isImplemented 
+              ? `Requirement: ${escapeHTML(reqId)} (Implemented in this test)`
+              : `Requirement: ${escapeHTML(reqId)} (Pending implementation in this test)`;
             return `
-              <span class="badge badge-pending drill-link" data-req-id="${escapeHTML(reqId)}" onclick="event.stopPropagation(); ReqApp.drillTo('requirements', this.dataset.reqId)" style="font-size: 9px; margin-right:2px;" title="View requirement: ${escapeHTML(reqId)}">
-                ${escapeHTML(reqId)}${compText}
+              <span class="badge ${badgeClass} drill-link" data-req-id="${escapeHTML(reqId)}" onclick="event.stopPropagation(); ReqApp.drillTo('requirements', this.dataset.reqId)" style="font-size: 9px; margin-right:2px;" title="${titleText}">
+                ${icon}${escapeHTML(reqId)}${compText}
               </span>
             `;
           }).join('') || '<em style="color:var(--status-failed); font-size:11px;">Unlinked</em>';
@@ -3625,15 +3731,23 @@
       const prog = state.programs.find(p => p.id === t.programId);
       const linkedReqs = (t.requirementIds || []).map(reqId => state.requirements.find(r => r.id === reqId)).filter(Boolean);
       const reqsHtml = linkedReqs.length > 0 
-        ? linkedReqs.map(r => `
-            <span class="badge badge-pending drill-link" 
-                  data-req-id="${escapeHTML(r.id)}"
-                  onclick="ReqApp.drillTo('requirements', this.dataset.reqId); event.stopPropagation();"
-                  style="cursor:pointer; margin-right:4px; margin-bottom:4px; display:inline-flex; align-items:center;"
-                  title="Click to view requirement detail">
-              ${escapeHTML(r.id)}
-            </span>
-          `).join('')
+        ? linkedReqs.map(r => {
+            const isImplemented = !t.implementedRequirementIds || t.implementedRequirementIds.includes(r.id);
+            const badgeClass = isImplemented ? 'badge-pending' : 'badge-unimplemented';
+            const icon = isImplemented ? '' : '&#9675; ';
+            const titleText = isImplemented
+              ? `Requirement: ${escapeHTML(r.id)} - Implemented. Click to view detail.`
+              : `Requirement: ${escapeHTML(r.id)} - Linked but NOT implemented in this test. Click to view detail.`;
+            return `
+              <span class="badge ${badgeClass} drill-link" 
+                    data-req-id="${escapeHTML(r.id)}"
+                    onclick="ReqApp.drillTo('requirements', this.dataset.reqId); event.stopPropagation();"
+                    style="cursor:pointer; margin-right:4px; margin-bottom:4px; display:inline-flex; align-items:center;"
+                    title="${titleText}">
+                ${icon}${escapeHTML(r.id)}
+              </span>
+            `;
+          }).join('')
         : '<em style="color:var(--status-failed);">Unlinked</em>';
       
       const assignee = t.assigneeId ? state.teamMembers.find(tm => tm.id === t.assigneeId) : null;
@@ -5337,8 +5451,11 @@
     openLinkTestModal,
     saveLinkTest,
     populateTestRequirements,
+    populateRequirementTests,
     onTestReqCheckboxChange,
     onTestReqImplementedCheckboxChange,
+    onReqTestLinkChange,
+    filterRequirementTests,
     filterTestRequirements,
     createTestForReq,
     createRequirementForCap,

@@ -194,18 +194,39 @@
           return isImplemented;
         });
 
-        if (verifyingTests.length > 0) {
-          req.baseStatus = 'Passed';
-          const passedNames = verifyingTests.map(t => t.name);
-          req.baseStatusReason = `Passed by verification test(s): ${passedNames.join(', ')}`;
-        } else if (inProgressTests.length > 0) {
-          req.baseStatus = 'In Progress';
-          const ipNames = inProgressTests.map(t => t.name);
-          req.baseStatusReason = `In progress via test(s): ${ipNames.join(', ')}`;
+        if (req.requireAllTestsPass) {
+          const allPassed = linkedTests.every(t => {
+            if (t.status !== 'Passed') return false;
+            const isImplemented = !t.implementedRequirementIds || t.implementedRequirementIds.includes(req.id);
+            return isImplemented;
+          });
+
+          if (allPassed) {
+            req.baseStatus = 'Passed';
+            const passedNames = verifyingTests.map(t => t.name);
+            req.baseStatusReason = `All linked verification tests passed: ${passedNames.join(', ')}`;
+          } else if (verifyingTests.length > 0 || inProgressTests.length > 0) {
+            req.baseStatus = 'In Progress';
+            req.baseStatusReason = `In progress: ${verifyingTests.length} of ${linkedTests.length} verification tests passed`;
+          } else {
+            req.baseStatus = 'Not Started';
+            const nsNames = linkedTests.map(t => t.name);
+            req.baseStatusReason = `Linked to test(s) but not verified: ${nsNames.join(', ')}`;
+          }
         } else {
-          req.baseStatus = 'Not Started';
-          const nsNames = linkedTests.map(t => t.name);
-          req.baseStatusReason = `Linked to test(s) but not verified: ${nsNames.join(', ')}`;
+          if (verifyingTests.length > 0) {
+            req.baseStatus = 'Passed';
+            const passedNames = verifyingTests.map(t => t.name);
+            req.baseStatusReason = `Passed by verification test(s): ${passedNames.join(', ')}`;
+          } else if (inProgressTests.length > 0) {
+            req.baseStatus = 'In Progress';
+            const ipNames = inProgressTests.map(t => t.name);
+            req.baseStatusReason = `In progress via test(s): ${ipNames.join(', ')}`;
+          } else {
+            req.baseStatus = 'Not Started';
+            const nsNames = linkedTests.map(t => t.name);
+            req.baseStatusReason = `Linked to test(s) but not verified: ${nsNames.join(', ')}`;
+          }
         }
       } else {
         req.baseStatus = 'Not Started';
@@ -280,6 +301,7 @@
     });
     state.requirements.forEach(r => {
       if (!r.hasOwnProperty('updatedAt')) r.updatedAt = 0;
+      if (!r.hasOwnProperty('requireAllTestsPass')) r.requireAllTestsPass = false;
     });
     state.capabilities.forEach(c => {
       if (!c.hasOwnProperty('updatedAt')) c.updatedAt = 0;
